@@ -1,5 +1,5 @@
 {
-    "dependencies": ["langchain_anthropic", "."],
+    "dependencies": ["langchain_community", "dashscope", "."],
     "graphs": {
         "chorus": "./src/chorus/agent.py:graph"
     },

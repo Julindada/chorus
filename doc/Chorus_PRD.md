@@ -78,7 +78,58 @@ Schwartz 模型是目前心理学领域验证最广泛的价值观框架，10 �
 
 > **角色设计原则：** 良知证人的职能是"如实呈现"而非"裁定"——它陈述偏差，但不判断对错，最终权衡由共识机制完成。这避免了道德维度过度压制其他维度。
 
-### 3.1 Agent 天然张力结构
+### 3.1 各维度心理学理论来源
+
+**Arbiter — 双过程理论 System 2**
+核心来源：Kahneman, D. (2011). *Thinking, Fast and Slow*. Farrar, Straus and Giroux.
+理论要点：人类存在两套并行决策系统。System 2 是慢速、刻意、需要认知资源的分析模式，负责概率推断、逻辑演绎和代价收益计算。Kahneman 指出 System 2 常被 System 1 的直觉劫持，导致"看起来理性"的决定实际仍被情绪驱动。Arbiter 的角色是确保 System 2 的声音被充分听见，而不是被其他维度的强信号掩盖。
+参考补充：Evans, J.S.B.T. (2008). "Dual-Processing Accounts of Reasoning, Judgment, and Social Cognition." *Annual Review of Psychology*, 59, 255–278.
+
+---
+
+**Empath — 情绪评价理论（Appraisal Theory）**
+核心来源：Lazarus, R.S. (1991). *Emotion and Adaptation*. Oxford University Press.
+理论要点：情绪不是对事件的直接反应，而是个体对事件"与自身目标和资源的关联程度"进行评价后产生的结果。不同的评价维度（是否与目标相关、是否可控、谁应负责）决定产生何种情绪。Empath 的工作是还原这套评价过程——用户叙述中流露的情绪信号，往往比理性陈述更忠实地反映其真实关切。
+参考补充：Frijda, N.H. (1986). *The Emotions*. Cambridge University Press. / Barrett, L.F. (2017). *How Emotions Are Made*. Houghton Mifflin Harcourt.（情绪的构建理论，强调情绪是预测性建构而非硬编码反应）
+
+---
+
+**Soothsayer — 躯体标记假说（Somatic Marker Hypothesis）**
+核心来源：Damasio, A.R. (1994). *Descartes' Error: Emotion, Reason, and the Human Brain*. Putnam.
+理论要点：身体状态（心跳加速、肌肉紧张、肠胃反应）会在无意识层面标记过往决策的结果，并在面临类似情境时以"预感"形式浮现，影响判断。Damasio 通过腹内侧前额叶损伤患者的研究发现：切断身体信号的人反而无法做出好决策，即使逻辑推理能力完好。Soothsayer 将这些身体预警信号翻译成可供分析的维度。
+参考补充：Damasio, A.R. (1996). "The somatic marker hypothesis and the possible functions of the prefrontal cortex." *Philosophical Transactions of the Royal Society B*, 351, 1413–1420. / Bechara, A., Damasio, H., Tranel, D., & Damasio, A.R. (1997). "Deciding advantageously before knowing the advantageous strategy." *Science*, 275, 1293–1295.（Iowa Gambling Task 实验验证）
+
+---
+
+**Compass — 意义疗法（Logotherapy）**
+核心来源：Frankl, V.E. (1959). *Man's Search for Meaning*. Beacon Press.
+理论要点：Frankl 在纳粹集中营的经历中发展出意义疗法：人类最基本的驱动力不是快乐或权力，而是对意义的追求（Will to Meaning）。当一个决策与个人的核心叙事和生命使命脱节时，即使在物质上合理，也会产生持续的空洞感。Compass 评估的正是这种"意义契合度"，而非短期的情绪满足或逻辑收益。
+参考补充：Steger, M.F. (2009). "Meaning in Life." in *Oxford Handbook of Positive Psychology*. / Seligman, M.E.P. (2011). *Flourish*. Free Press.（PERMA 模型中 Meaning 维度的实证研究）
+
+---
+
+**Narrator — 叙事认同理论（Narrative Identity Theory）**
+核心来源：McAdams, D.P. (1993). *The Stories We Live By: Personal Myths and the Making of the Self*. Guilford Press.
+理论要点：McAdams 认为自我认同本质上是一个不断修订的"个人神话"——人们通过构建连贯的生命故事来理解自己是谁。当某个决策与这个内在故事的主角形象产生矛盾时（如"我一直是敢于冒险的人，但这次我选择了稳定"），会触发认知失调和身份焦虑。Narrator 的职责是识别这种张力，而非强制消解它。
+参考补充：McAdams, D.P. (2001). "The psychology of life stories." *Review of General Psychology*, 5(2), 100–122. / Markus, H. (1977). "Self-schemata and processing information about the self." *Journal of Personality and Social Psychology*, 35(2), 63–78.（自我图式理论，描述自我概念如何过滤信息）
+
+---
+
+**Conscience — Schwartz 基本人类价值观理论**
+核心来源：Schwartz, S.H. (1992). "Universals in the content and structure of values: Theoretical advances and empirical tests in 20 countries." *Advances in Experimental Social Psychology*, 25, 1–65.
+理论要点：Schwartz 通过跨文化研究（20+ 个国家）验证了 10 个基本价值观的普遍结构，排列在圆形动机连续体上，相邻价值兼容，对角价值天然冲突（如"自主导向"与"顺从"）。个体持有的价值观优先序差异，是预测行为和决策的核心变量。Conscience 将用户的 `value_vector` 与当前决策做向量对齐分析，只呈现偏差，不裁定方向。
+参考补充：Schwartz, S.H. (2012). "An Overview of the Schwartz Theory of Basic Values." *Online Readings in Psychology and Culture*, 2(1). / Schwartz, S.H., & Bilsky, W. (1987). "Toward a universal psychological structure of human values." *Journal of Personality and Social Psychology*, 53(3), 550–562.
+
+---
+
+**Guardian — 依附理论（Attachment Theory）**
+核心来源：Bowlby, J. (1969). *Attachment and Loss, Vol. 1: Attachment*. Basic Books.
+理论要点：Bowlby 提出依附系统是人类进化出的核心生存机制：与亲密他人的联结感威胁时，会激活强烈的焦虑反应。Ainsworth 后续发展出安全型、焦虑型、回避型三种依附风格，直接影响个体在人际决策中的风险评估和牺牲意愿。Guardian 评估的是决策对依附关系网络的冲击——不仅是客观影响，还包括决策者的依附风格如何放大或压缩这种感知。
+参考补充：Ainsworth, M.D.S. (1978). *Patterns of Attachment*. Erlbaum. / Hazan, C., & Shaver, P. (1987). "Romantic love conceptualized as an attachment process." *Journal of Personality and Social Psychology*, 52(3), 511–524.（将依附理论延伸至成人亲密关系）
+
+---
+
+### 3.2 Agent 天然张力结构
 
 高冲突对（辩论阶段优先进入对抗）：
 
@@ -112,9 +163,9 @@ Schwartz 模型是目前心理学领域验证最广泛的价值观框架，10 �
        ↓
   [Intake Node] ← 解析自然语言，加载 value_vector
        ↓
-  [Decision Classifier] ← 查模板注册中心；未命中则 LLM 生成，用户确认后保存
+  [Decision Classifier] ← LLM 归类到 7 种决策类型，加载预置场景权重模板
        ↓
-  [Bias Detection Layer] ← 规则匹配认知偏误，生成 Bias Metadata
+  [Bias Detection Layer] ← LLM 检测 13 种认知偏误，生成 Bias Metadata
        ↓
   ┌──────────────────────────────────────────────────┐
   │  逻辑法官 → 情绪侦探 → 躯体预言家                  │
@@ -154,7 +205,7 @@ Schwartz 模型是目前心理学领域验证最广泛的价值观框架，10 �
 
 **推荐方案：** 用户在初次使用时写一段自由叙述（类似心理咨询初次访谈），涵盖当前生活状态、过去重大决策的感受、对未来的想象。
 
-- Intake Node 从叙述中提取结构化心理档案（Schwartz 向量初始值、主要关切、当前压力源）
+- Intake Node 从 SQLite 加载用户的 Schwartz 向量；首次使用时通过 `interrupt()` 暂停，等待用户逐维度填写后写入 DB
 - 所有 Agent 在推理时同时访问**原始叙述**，确保信息密度均匀，避免数字锚定
 - 从 Obsidian/Notion 笔记提取的内容，经用户校准后进入同一流程
 
@@ -181,15 +232,25 @@ Schwartz 模型是目前心理学领域验证最广泛的价值观框架，10 �
 
 **机制：** 在 Intake Node 之后、心理节点之前，插入 Bias Detection Layer。类比 AOP 中的 Around Advice——数据进入任何 Agent 之前先经过拦截检查。
 
-**检测方式：** 使用规则匹配而非 LLM 推断（避免 Self-referential 问题：用同一个 LLM 检测自身可能已被锚定的输入）。
+**检测方式：** 使用独立 LLM 调用（`temperature=0`，专用系统 prompt），输出结构化的 `list[BiasFlag]`，与下游 7 个 Agent 的调用完全隔离。
 
-| 触发模式 | 识别偏误 | 传递给 |
-|----------|----------|--------|
-| "已经投入 X 年 / X 万 / X 个月" | 沉没成本谬误 | 逻辑法官：重点审计历史投入的真实权重 |
-| "最近刚发生了 Y" / "上周" / "昨天" | 近因效应 | 情绪侦探：识别短期情绪是否主导叙述 |
-| "所有人都说" / "大家都觉得" | 从众效应 | 自我叙述者：检查是否与自身价值观冲突 |
-| "要么全做要么不做" / "没有退路" | 全有全无思维 | 逻辑法官：审查是否存在中间路径 |
-| 大量正面描述 + 极少负面信息 | 确认偏误 | 所有 Agent：主动寻找反向证据 |
+目前识别 13 种认知偏误：
+
+| 偏误（英文名） | 典型表现 | 主要传递给 |
+|---------------|---------|-----------|
+| Sunk Cost Fallacy | 已投入大量时间/资金难以放弃 | 逻辑法官 |
+| Recency Effect | 近期事件主导整体判断 | 情绪侦探 |
+| Bandwagon Effect | 以他人选择为主要依据 | 自我叙述者 |
+| Black-and-White Thinking | 非此即彼，忽视中间路径 | 逻辑法官 |
+| Confirmation Bias | 正/负信息严重失衡 | 所有 Agent |
+| Loss Aversion | 对损失的恐惧远超对等值收益的期待 | 逻辑法官、情绪侦探 |
+| Status Quo Bias | 将改变本身视为风险 | 意义向导、自我叙述者 |
+| Anchoring Effect | 被某个具体数字/时间点过度锚定 | 逻辑法官 |
+| Overconfidence Bias | 乐观程度超出实际依据 | 躯体预言家、良知证人 |
+| Emotional Reasoning | 以当下情绪作为判断事实的依据 | 逻辑法官 |
+| Planning Fallacy | 低估所需时间/资源 | 躯体预言家、逻辑法官 |
+| Catastrophizing | 将负面结果想象到极端最坏情形 | 情绪侦探、躯体预言家 |
+| Should Statements | 用道德义务感替代对真实意愿的探索 | 良知证人、自我叙述者 |
 
 **设计原则：** 与良知证人保持一致——只呈现 Flag，不做价值判断。偏误标注作为 Metadata 传给对应 Agent，由 Agent 自行决定如何加权，不强制干预结论。
 
@@ -202,27 +263,26 @@ Schwartz 模型是目前心理学领域验证最广泛的价值观框架，10 �
 ```
 Decision Classifier
        ↓
-  查询模板注册中心（SQLite: scene_templates）
+  LLM 将叙述归类到 7 种固定决策类型（Literal 枚举约束，temperature=0）
        ↓
-  命中 → 直接加载模板
-  未命中 → LLM 根据用户叙述生成候选模板
-              ↓
-         呈现给用户确认 / 微调
-              ↓
-         用户同意 → 保存至模板注册中心，本次使用
-         用户拒绝 → 重新生成或手动输入
+  按类型查 SQLite scene_templates（首次运行自动写入种子数据）
+       ↓
+  返回对应预置权重模板
 ```
 
-**系统内置模板（初始种子）：**
+**7 种内置决策类型：**
 
-| 决策类型 | 高权重 Agent | 低权重 Agent |
-|----------|-------------|-------------|
-| 职业发展（换工作、晋升） | 逻辑法官、意义向导 | 关系守护者 |
-| 地理迁移（换城市、移民） | 关系守护者、躯体预言家 | 情绪侦探 |
-| 财务决策（投资、买房） | 逻辑法官、良知证人 | 情绪侦探 |
-| 人际关系（感情、社交） | 情绪侦探、关系守护者 | 逻辑法官 |
+| 决策类型 | 中文 | 主导 Agent | 低权重 Agent |
+|----------|------|-----------|-------------|
+| career | 职业与事业 | 逻辑法官、意义向导 | 关系守护者 |
+| finance | 财务与资产 | 逻辑法官、良知证人 | 情绪侦探 |
+| relationship | 亲密关系与家庭 | 情绪侦探、关系守护者 | 逻辑法官 |
+| relocation | 居住与迁移 | 关系守护者、躯体预言家 | 情绪侦探 |
+| health | 健康与身体 | 躯体预言家、情绪侦探 | 良知证人 |
+| identity | 身份认同与自我成长 | 自我叙述者、意义向导 | 关系守护者 |
+| ethics | 伦理与社会责任 | 良知证人、意义向导 | 躯体预言家 |
 
-内置模板作为初始种子，用户使用过程中产生的新模板会持续写入注册中心，系统覆盖的决策类型随使用次数扩展。
+7 种类型覆盖了绝大多数人生重大决策场景，类型范围固定以保证分类一致性。
 
 **最终权重公式：** `final_weight = value_vector × scene_weight_template`（逐维度相乘，归一化）
 

@@ -1,8 +1,8 @@
-from langchain_anthropic import ChatAnthropic
+from langchain_community.chat_models.tongyi import ChatTongyi
+from chorus.infrastructure.config import LLM_MODEL
 
-_DEFAULT_MODEL = "claude-sonnet-4-6"
-_DEFAULT_TEMPERATURE = 1.0
+_DEFAULT_TEMPERATURE = 0.7
 
 
-def get_model(temperature: float = _DEFAULT_TEMPERATURE) -> ChatAnthropic:
-    return ChatAnthropic(model=_DEFAULT_MODEL, temperature=temperature)
+def get_model(temperature: float = _DEFAULT_TEMPERATURE) -> ChatTongyi:
+    return ChatTongyi(model=LLM_MODEL, temperature=temperature)

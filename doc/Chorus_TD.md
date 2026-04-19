@@ -24,10 +24,10 @@ intake_node
   │  解析叙述，加载 value_vector
   ▼
 decision_classifier_node
-  │  查模板注册中心；未命中则 LLM 生成，用户确认后保存
+  │  LLM 分类到固定枚举，按类型加载预置权重模板
   ▼
 bias_detection_node
-  │  规则匹配，生成 bias_flags Metadata
+  │  LLM 检测认知偏误，生成 bias_flags Metadata
   ▼
 fan_out_node  ── Send ──► agent_node("Arbiter")    ──┐
               ── Send ──► agent_node("Empath")     ──┤
@@ -79,6 +79,7 @@ class AgentStance(TypedDict):
 
 class DecisionState(TypedDict):
     # 输入层
+    username: str
     user_narrative: str
     decision_options: list[str]
 
@@ -130,7 +131,8 @@ class DecisionState(TypedDict):
 ```python
 def intake_node(state: DecisionState) -> dict:
     # ── 加载用户画像 ──────────────────────────────────────────────
-    value_vector = load_value_vector()          # 从 SQLite 读取 Schwartz 向量
+    username = state["username"]
+    value_vector = load_value_vector(username)   # 从 SQLite 按 username 读取
     if value_vector is None:
         user_input = interrupt({
             "action": "fill_value_vector",
@@ -141,7 +143,7 @@ def intake_node(state: DecisionState) -> dict:
             dim: max(0.0, min(1.0, float(user_input.get(dim, 0.5))))
             for dim in SCHWARTZ_DIMS
         }
-        save_value_vector(value_vector)
+        save_value_vector(username, value_vector)
 
     # ── 初始化控制字段 ────────────────────────────────────────────
     return {
@@ -160,98 +162,64 @@ def intake_node(state: DecisionState) -> dict:
 
 ### decision_classifier_node
 
-职责：cache-aside 模式管理场景权重模板——命中直接加载，未命中由 LLM 生成候选模板后交给用户确认，确认后写入注册中心。
+职责：将 `user_narrative` 归类到固定的 7 种决策类型，然后从 DB 加载对应的预置权重模板。
 
-用户确认环节使用 LangGraph 的 `interrupt()`：图执行在此暂停，等待外部（UI 层）将用户的确认/修改结果通过 `Command(resume=...)` 传回后继续。
+**7 种决策类型**（由 7 个心理维度推导，每种类型有 1-2 个主导维度）：
+
+| 类型 | 中文 | 主导 Agent |
+|------|------|-----------|
+| `career` | 职业与事业 | Arbiter、Compass |
+| `finance` | 财务与资产 | Arbiter、Conscience |
+| `relationship` | 亲密关系与家庭 | Empath、Guardian |
+| `relocation` | 居住与迁移 | Guardian、Soothsayer |
+| `health` | 健康与身体 | Soothsayer、Empath |
+| `identity` | 身份认同与自我成长 | Narrator、Compass |
+| `ethics` | 伦理与社会责任 | Conscience、Compass |
+
+**一致性保证**：LLM 输出通过 Pydantic `Literal` 约束到以上 7 种类型，无法自造新 key，相似叙述在同一语义类别下稳定收敛到同一类型，解决自由文本 key 的命名漂移问题。
+
+**种子模板**：7 种类型的权重预置在 `DECISION_TYPES` 常量中，首次运行时由 DAO 层 `INSERT OR IGNORE` 写入 DB，后续查询直接命中，无需额外 LLM 调用。
 
 ```python
 def decision_classifier_node(state: DecisionState) -> dict:
     narrative = state["user_narrative"]
 
-    # ── 查询模板注册中心 ──────────────────────────────────────────
-    matched = db.find_scene_template(narrative)   # 语义或关键词匹配
-    if matched:
-        return {"scene_template": matched}
+    # ── LLM 分类 → 固定枚举（temperature=0，结果稳定）──────────────
+    result = llm.with_structured_output(ClassificationResult).invoke(
+        prompt.format(narrative=narrative)
+    )
 
-    # ── LLM 生成候选模板 ──────────────────────────────────────────
-    candidate = llm.invoke([
-        {"role": "system", "content": (
-            "根据用户的决策描述，为以下 7 个心理维度 Agent 生成权重分配（各维度 0.0–1.0，归一化）："
-            f"{AGENT_NAMES}"
-        )},
-        {"role": "user", "content": narrative},
-    ])
+    # ── 按类型加载预置权重（种子首次自动写入 DB）────────────────────
+    template = find_scene_template(result.decision_type)
 
-    # ── 用户确认（human-in-the-loop） ─────────────────────────────
-    # interrupt() 暂停图执行，UI 层展示 candidate 给用户
-    # 用户可直接确认或修改后通过 Command(resume=...) 传回
-    confirmed = interrupt({"action": "confirm_scene_template", "candidate": candidate})
-
-    final_template = confirmed.get("template", candidate)
-    if confirmed.get("approved", False):
-        db.save_scene_template(narrative, final_template)   # 写入注册中心供复用
-
-    return {"scene_template": final_template}
+    return {"scene_template": template}
 ```
 
 ### bias_detection_node
 
-职责：纯规则匹配，不调用 LLM（避免 self-referential 问题）。识别用户叙述中的认知偏误模式，生成 `bias_flags` Metadata，只呈现不裁判。
+职责：用 LLM 识别用户叙述中的认知偏误，生成 `bias_flags` Metadata 供下游 Agent 参考。只呈现现象，不做价值判断。
+
+**识别的认知偏误类型（13 种）**：Sunk Cost Fallacy、Recency Effect、Bandwagon Effect、Black-and-White Thinking、Confirmation Bias、Loss Aversion、Status Quo Bias、Anchoring Effect、Overconfidence Bias、Emotional Reasoning、Planning Fallacy、Catastrophizing、Should Statements。
+
+**为什么用 LLM 而不是正则**：同一偏误的表达方式多样，关键词匹配假阴性高且覆盖面窄；隐性偏误（叙述结构上的选择性忽略）正则完全无法识别。使用独立的系统 prompt + structured output（`temperature=0`）约束输出格式，与下游 Agent 调用隔离，不存在自引用问题。
 
 ```python
-import re
-
-BIAS_RULES = [
-    {
-        "pattern":       r"已经投入.{0,10}(年|万|个月)",
-        "bias":          "沉没成本谬误",
-        "target_agents": ["逻辑法官"],
-        "note":          "历史投入已发生且不可回收，请审计其在当前决策中的真实权重",
-    },
-    {
-        "pattern":       r"(最近|上周|昨天|刚刚).{0,20}(发生|出现|经历)",
-        "bias":          "近因效应",
-        "target_agents": ["情绪侦探"],
-        "note":          "近期事件可能放大短期情绪，请评估其是否主导了整体叙述",
-    },
-    {
-        "pattern":       r"(所有人|大家|周围人|朋友都).{0,10}(说|觉得|认为)",
-        "bias":          "从众效应",
-        "target_agents": ["自我叙述者"],
-        "note":          "多数意见不代表对用户本人最优，请检查是否与其价值观冲突",
-    },
-    {
-        "pattern":       r"(要么.+要么|没有退路|只能|必须选)",
-        "bias":          "全有全无思维",
-        "target_agents": ["逻辑法官"],
-        "note":          "请审查是否存在被忽视的中间路径或分阶段方案",
-    },
-]
-
 def bias_detection_node(state: DecisionState) -> dict:
     narrative = state["user_narrative"]
-    flags = []
 
-    for rule in BIAS_RULES:
-        if re.search(rule["pattern"], narrative):
-            flags.append({
-                "bias":          rule["bias"],
-                "target_agents": rule["target_agents"],
-                "note":          rule["note"],
-            })
+    llm = get_model(temperature=0.0).with_structured_output(BiasDetectionResult)
+    result: BiasDetectionResult = llm.invoke([
+        {"role": "system", "content": _SYSTEM_PROMPT},   # 专注识别，不做判断
+        {"role": "user",   "content": narrative},
+    ])
 
-    # 确认偏误：正面描述词 >> 负面描述词
-    pos = len(re.findall(r"(好|棒|优秀|喜欢|期待|兴奋|开心)", narrative))
-    neg = len(re.findall(r"(不好|差|担心|害怕|紧张|压力|风险)", narrative))
-    if pos > neg * 3 and pos > 2:
-        flags.append({
-            "bias":          "确认偏误",
-            "target_agents": AGENT_NAMES,   # 所有 Agent
-            "note":          "叙述中正面信息显著多于负面，请主动寻找反向证据",
-        })
-
-    return {"bias_flags": flags}
+    return {"bias_flags": [f.model_dump() for f in result.flags]}
 ```
+
+`BiasDetectionResult.flags` 为 `list[BiasFlag]`，每条包含：
+- `bias`：偏误名称
+- `target_agents`：最需警惕此偏误的 Agent（从 7 个中选）
+- `note`：针对该叙述的具体描述，不超过 40 字
 
 ### fan_out_node
 
@@ -491,13 +459,13 @@ def debate_prompt(
 ```python
 # 每个 Agent 主要对应的 Schwartz 价值维度
 AGENT_VALUE_MAPPING = {
-    "逻辑法官":   ["Achievement", "Self-Direction"],
-    "情绪侦探":   ["Hedonism", "Stimulation"],
-    "躯体预言家": ["Security", "Conformity"],
-    "意义向导":   ["Universalism", "Self-Direction"],
-    "自我叙述者": ["Self-Direction", "Benevolence"],
-    "良知证人":   ["Universalism", "Benevolence", "Tradition"],
-    "关系守护者": ["Benevolence", "Security"],
+    "Arbiter":    ["achievement", "self_direction"],
+    "Empath":     ["hedonism", "stimulation"],
+    "Soothsayer": ["security", "conformity"],
+    "Compass":    ["universalism", "self_direction"],
+    "Narrator":   ["self_direction", "benevolence"],
+    "Conscience": ["universalism", "benevolence", "tradition"],
+    "Guardian":   ["benevolence", "security"],
 }
 
 def consensus_node(state: DecisionState) -> dict:
@@ -555,20 +523,18 @@ from datetime import datetime
 
 def persona_updater_node(state: DecisionState) -> dict:
     weighted_score = state["consensus"]["weighted_score"]
-    decision_type  = state["scene_template"].get("decision_type", "unknown")
 
     records = []
     for agent_name, stance_data in state["agent_stances"].items():
         alignment = 1.0 - abs(stance_data["stance"] - weighted_score) / 2.0
         records.append({
-            "decision_type":   decision_type,
             "agent_name":      agent_name,
             "initial_stance":  stance_data["stance"],
             "final_alignment": round(alignment, 4),
             "timestamp":       datetime.now().isoformat(),
         })
 
-    db.insert_many("decision_history", records)
+    insert_decision_records(records)
     return {}   # 纯副作用节点，不修改 State
 ```
 
@@ -610,8 +576,9 @@ graph.add_edge("persona_updater_node", END)
 # 条件边
 graph.add_conditional_edges("entropy_monitor_node", route_after_entropy)
 
-# 编译，挂载 Checkpointer
-app = graph.compile(checkpointer=SqliteSaver("chorus.db"))
+# 编译，挂载 Checkpointer（DB_PATH 从环境变量 CHORUS_DB_PATH 读取）
+conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+app = graph.compile(checkpointer=SqliteSaver(conn))
 ```
 
 ---
@@ -621,8 +588,8 @@ app = graph.compile(checkpointer=SqliteSaver("chorus.db"))
 | 组件 | 选型 | 说明 |
 |------|------|------|
 | 框架 | LangGraph (Python) | 支持循环、Checkpointer、Annotated State |
-| LLM | Claude Sonnet | 逻辑推理与心理模拟能力强 |
-| 存储 | SQLite | 状态持久化（Checkpointer）+ 决策历史（Evolving Persona） |
+| LLM | Qwen3.6-Plus (DashScope) | 通义千问，通过 `langchain_community.ChatTongyi` 接入，模型名由 `CHORUS_LLM_MODEL` 环境变量配置 |
+| 存储 | SQLite | 状态持久化（Checkpointer）+ 决策历史（Evolving Persona）+ 场景模板注册中心 |
 | 调试 | LangGraph Inspector | 可视化 Agent 节点流向与状态变化 |
 
 ---
@@ -633,8 +600,8 @@ app = graph.compile(checkpointer=SqliteSaver("chorus.db"))
 
 | 节点 | 调用类型 | 上下文来源 |
 |------|----------|-----------|
-| intake_node | 单轮 | user_narrative |
-| decision_classifier_node | 单轮 | user_narrative + scene_templates |
+| decision_classifier_node | 单轮 | user_narrative；temperature=0，只做分类不生成权重 |
+| bias_detection_node | 单轮 | user_narrative；temperature=0，只识别偏误不做判断 |
 | agent_node（Phase 1） | 单轮 | user_narrative + bias_flags + value_vector，隔离其他 Agent stances |
 | debate_node | 多轮 | my_stance + opponent_stance + ally_stances（同阵营摘要）+ debate_context（压缩视图），隔离非辩论 Agent stances |
 | consensus_node | 单轮 | 全部 agent_stances + debate_history + value_vector + scene_template |

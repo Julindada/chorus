@@ -1,7 +1,6 @@
 import json
 import sqlite3
-
-DB_PATH = "data/chorus.db"
+from chorus.infrastructure.config import DB_PATH
 
 _CREATE_TABLE = (
     "CREATE TABLE IF NOT EXISTS user_profile "
