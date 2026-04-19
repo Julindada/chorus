@@ -78,6 +78,25 @@ Schwartz 模型是目前心理学领域验证最广泛的价值观框架，10 �
 
 > **角色设计原则：** 良知证人的职能是"如实呈现"而非"裁定"——它陈述偏差，但不判断对错，最终权衡由共识机制完成。这避免了道德维度过度压制其他维度。
 
+### 3.1 Agent 天然张力结构
+
+高冲突对（辩论阶段优先进入对抗）：
+
+| 张力对 | 心理学原因 |
+|--------|-----------|
+| Arbiter ↔ Empath | System 2 vs System 1，最经典的冲突 |
+| Arbiter ↔ Soothsayer | 理性收益 vs 身体成本 |
+| Compass ↔ Arbiter | 意义无法被效用函数覆盖 |
+| Narrator ↔ Guardian | 自我实现 vs 对他人的影响 |
+
+天然盟友（倾向一致，通常不进入辩论）：
+
+| 盟友对 | 原因 |
+|--------|------|
+| Empath + Soothsayer | 同属 System 1 驱动 |
+| Compass + Narrator | 同属身份层 |
+| Arbiter + Conscience | 同属分析性 |
+
 ---
 
 ## 4. 系统架构与机制 (System Architecture)
@@ -125,11 +144,9 @@ Schwartz 模型是目前心理学领域验证最广泛的价值观框架，10 �
 
 ### 4.2 状态持久化与时间旅行 (State Persistence / Time Travel)
 
-**机制：** 利用 LangGraph 的 `Checkpointer`，将每一个决策状态存入 SQLite，而非保留在 prompt 上下文中。
+每一次决策运行的完整状态都被持久化，支持跨会话恢复和历史回溯。
 
-**时间旅行场景：** "如果两年前我去了另一家公司，现在会怎样？"用户用自然语言描述"两年前的自己"，系统生成一个历史状态快照存入 Checkpointer，在此基础上重新运行所有 Agent，观察模拟出的演化路径。
-
-**Context 控制：** 各 Agent 通过 Annotated State 只订阅自己需要的状态字段，不全量读取历史。历史叙述做一次摘要压缩后再存入快照，原始文本留在 SQLite，不进入 prompt context。
+**时间旅行场景：** "如果两年前我去了另一家公司，现在会怎样？"用户用自然语言描述"两年前的自己"，系统基于历史状态快照重新运行所有 Agent，观察模拟出的演化路径。
 
 ### 4.3 自然语言上下文输入 (Narrative Context)
 
@@ -215,18 +232,7 @@ Decision Classifier
 
 **问题：** 人的价值观会随时间和环境变化，单次校准的 `value_vector` 无法捕捉这种演化。
 
-**机制：** 每次决策完成后，Persona Updater 节点将各 Agent 初始意见与最终决策的偏差存入 SQLite。
-
-```sql
-CREATE TABLE decision_history (
-    id              INTEGER PRIMARY KEY,
-    decision_type   TEXT,     -- 决策类型
-    agent_name      TEXT,     -- Agent 名称
-    initial_stance  REAL,     -- Agent 初始倾向分（-1.0 到 1.0）
-    final_alignment REAL,     -- 最终决策与该 Agent 意见的对齐程度
-    timestamp       DATETIME
-);
-```
+**机制：** 每次决策完成后，Persona Updater 节点将各 Agent 初始意见与最终决策的偏差存入 SQLite `decision_history` 表。
 
 **历史模式呈现：** 下次 Intake 阶段，系统读取记录并在报告末附上统计，使用数据而非人格化表述：
 
@@ -236,19 +242,7 @@ CREATE TABLE decision_history (
 
 ---
 
-## 5. 技术栈 (Tech Stack)
-
-| 组件 | 选型 | 说明 |
-|------|------|------|
-| 框架 | LangGraph (Python) | 支持循环、Checkpointer、Annotated State |
-| LLM | Claude Sonnet（推荐） | 逻辑推理与心理模拟能力强 |
-| 联网搜索 | Tavily API | 按需扩展用户叙述中的信息缺口 |
-| 存储 | SQLite | 状态持久化（Checkpointer）+ 决策历史（Evolving Persona） |
-| 调试 | LangGraph Inspector | 可视化 Agent 节点流向与状态变化 |
-
----
-
-## 6. 输出格式 (Output Format)
+## 5. 输出格式 (Output Format)
 
 每次决策运行结束后，Consensus Node 输出结构化报告，包含：
 
@@ -263,7 +257,7 @@ CREATE TABLE decision_history (
 
 ---
 
-## 7. 为什么有意义 (Why It Matters)
+## 6. 为什么有意义 (Why It Matters)
 
 **克服认知偏误：** Chorus 是对"损失厌恶"、"短期情绪劫持"和"自我叙事过度防御"的算法修正——不是替代人做决定，而是确保每个心理维度都被听见。
 

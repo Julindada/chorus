@@ -29,13 +29,13 @@ decision_classifier_node
 bias_detection_node
   │  规则匹配，生成 bias_flags Metadata
   ▼
-fan_out_node  ── Send ──► agent_node("逻辑法官")  ──┐
-              ── Send ──► agent_node("情绪侦探")  ──┤
-              ── Send ──► agent_node("躯体预言家") ──┤
-              ── Send ──► agent_node("意义向导")  ──┤ fan-in
-              ── Send ──► agent_node("自我叙述者") ──┤ (reducer 合并)
-              ── Send ──► agent_node("良知证人")  ──┤
-              ── Send ──► agent_node("关系守护者") ──┘
+fan_out_node  ── Send ──► agent_node("Arbiter")    ──┐
+              ── Send ──► agent_node("Empath")     ──┤
+              ── Send ──► agent_node("Soothsayer") ──┤
+              ── Send ──► agent_node("Compass")    ──┤ fan-in
+              ── Send ──► agent_node("Narrator")   ──┤ (reducer 合并)
+              ── Send ──► agent_node("Conscience") ──┤
+              ── Send ──► agent_node("Guardian")   ──┘
                                                    │
                                                    ▼
                                          entropy_monitor_node
@@ -616,24 +616,14 @@ app = graph.compile(checkpointer=SqliteSaver("chorus.db"))
 
 ---
 
-## 6. Agent 天然张力结构
+## 6. 技术栈 (Tech Stack)
 
-设计辩论路由时，`find_max_divergence_pair` 优先识别以下高冲突对：
-
-| 张力对 | 心理学原因 |
-|--------|-----------|
-| Arbiter ↔ Empath | System 2 vs System 1，最经典的冲突 |
-| Arbiter ↔ Soothsayer | 理性收益 vs 身体成本 |
-| Compass ↔ Arbiter | 意义无法被效用函数覆盖 |
-| Narrator ↔ Guardian | 自我实现 vs 对他人的影响 |
-
-天然盟友（倾向一致，通常不进入辩论）：
-
-| 盟友对 | 原因 |
-|--------|------|
-| Empath + Soothsayer | 同属 System 1 驱动 |
-| Compass + Narrator | 同属身份层 |
-| Arbiter + Conscience | 同属分析性 |
+| 组件 | 选型 | 说明 |
+|------|------|------|
+| 框架 | LangGraph (Python) | 支持循环、Checkpointer、Annotated State |
+| LLM | Claude Sonnet | 逻辑推理与心理模拟能力强 |
+| 存储 | SQLite | 状态持久化（Checkpointer）+ 决策历史（Evolving Persona） |
+| 调试 | LangGraph Inspector | 可视化 Agent 节点流向与状态变化 |
 
 ---
 
