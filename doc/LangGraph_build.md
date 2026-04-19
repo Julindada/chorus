@@ -29,6 +29,8 @@ my-app/
 │   │   └── __init__.py
 │   ├── tools/               # 工具 (@tool) 的定义
 │   │   └── __init__.py
+│   ├── infrastructure/      # 基础设施
+│   │   └── __init__.py
 │   └── utils/               # 其他辅助工具
 │       └── __init__.py
 ├── .env              # 环境变量 (API Keys 等)

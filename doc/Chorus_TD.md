@@ -123,26 +123,30 @@ class DecisionState(TypedDict):
 
 ### intake_node
 
-职责：初始化 State 控制字段、加载用户画像、按需触发联网搜索补充背景信息。
+职责：加载用户画像、初始化 State 控制字段。
 
-联网搜索采用实体识别 + 按需触发模式：从叙述中提取公司名、城市、技术栈等实体，逐类匹配搜索策略，将结果以补充背景注入 `enriched_context`，不替代原始叙述。
+`value_vector` 从 SQLite 读取；若不存在（首次使用），通过 `interrupt()` 暂停图执行，等待用户填写 Schwartz 10 维打分后写入 DB 再继续。
 
 ```python
-ENTITY_SEARCH_STRATEGIES = {
-    "company":     "site:glassdoor.com OR site:linkedin.com {entity} reviews 2024",
-    "city":        "{entity} 生活成本 租金 2024",
-    "tech_stack":  "{entity} 薪资 市场需求 2024",
-    "industry":    "{entity} 行业趋势 裁员风险 2024",
-}
-
 def intake_node(state: DecisionState) -> dict:
     # ── 加载用户画像 ──────────────────────────────────────────────
-    value_vector = db.load_value_vector()          # 从 SQLite 读取 Schwartz 向量
+    value_vector = load_value_vector()          # 从 SQLite 读取 Schwartz 向量
+    if value_vector is None:
+        user_input = interrupt({
+            "action": "fill_value_vector",
+            "message": "请为以下 10 个 Schwartz 价值观维度打分（0.0–1.0）：",
+            "dims": SCHWARTZ_DIMS,
+        })
+        value_vector = {
+            dim: max(0.0, min(1.0, float(user_input.get(dim, 0.5))))
+            for dim in SCHWARTZ_DIMS
+        }
+        save_value_vector(value_vector)
 
     # ── 初始化控制字段 ────────────────────────────────────────────
-    init_fields = {
+    return {
         "value_vector":       value_vector,
-        "critical_agents":    ["逻辑法官", "情绪侦探"],  # System 2 / System 1 代表，缺失破坏熵值含义
+        "critical_agents":    ["Arbiter", "Empath"],  # 缺失破坏熵值含义
         "failed_agents":      [],
         "debate_round":       0,
         "max_debate_rounds":  3,
@@ -152,22 +156,6 @@ def intake_node(state: DecisionState) -> dict:
         "antagonism_flags":   [],
         "agent_stances":      {},
     }
-
-    # ── 按需联网搜索 ──────────────────────────────────────────────
-    entities = extract_entities(state["user_narrative"])  # 实体识别（LLM 单轮调用）
-    search_results = {}
-    for entity_type, entity_name in entities.items():
-        if entity_type in ENTITY_SEARCH_STRATEGIES:
-            query  = ENTITY_SEARCH_STRATEGIES[entity_type].format(entity=entity_name)
-            result = web_search(query)
-            search_results[entity_name] = {"type": entity_type, "result": result}
-
-    enriched_context = {
-        "narrative":       state["user_narrative"],
-        "web_supplements": search_results,   # 补充背景，Agent 可选择性参考
-    }
-
-    return {**init_fields, "enriched_context": enriched_context}
 ```
 
 ### decision_classifier_node
@@ -634,18 +622,18 @@ app = graph.compile(checkpointer=SqliteSaver("chorus.db"))
 
 | 张力对 | 心理学原因 |
 |--------|-----------|
-| 逻辑法官 ↔ 情绪侦探 | System 2 vs System 1，最经典的冲突 |
-| 逻辑法官 ↔ 躯体预言家 | 理性收益 vs 身体成本 |
-| 意义向导 ↔ 逻辑法官 | 意义无法被效用函数覆盖 |
-| 自我叙述者 ↔ 关系守护者 | 自我实现 vs 对他人的影响 |
+| Arbiter ↔ Empath | System 2 vs System 1，最经典的冲突 |
+| Arbiter ↔ Soothsayer | 理性收益 vs 身体成本 |
+| Compass ↔ Arbiter | 意义无法被效用函数覆盖 |
+| Narrator ↔ Guardian | 自我实现 vs 对他人的影响 |
 
 天然盟友（倾向一致，通常不进入辩论）：
 
 | 盟友对 | 原因 |
 |--------|------|
-| 情绪侦探 + 躯体预言家 | 同属 System 1 驱动 |
-| 意义向导 + 自我叙述者 | 同属身份层 |
-| 逻辑法官 + 良知证人 | 同属分析性 |
+| Empath + Soothsayer | 同属 System 1 驱动 |
+| Compass + Narrator | 同属身份层 |
+| Arbiter + Conscience | 同属分析性 |
 
 ---
 
@@ -671,7 +659,7 @@ app = graph.compile(checkpointer=SqliteSaver("chorus.db"))
 
 **最大辩论轮次**：`max_debate_rounds` 建议默认值为 3，可由用户在初始化时配置。超出轮次时 `consensus_node` 在报告中明确标注拮抗 Agent 对，不掩盖冲突。
 
-**Fan-in 降级处理**：`RetryPolicy` 处理 API 瞬时失败（超时、Rate Limit），是第一道防线。`entropy_monitor_node` 内联健康检查是第二道：关键 Agent（`critical_agents`，默认逻辑法官 + 情绪侦探）缺失时标记 `SYSTEM_PARTIAL_FAILURE` 并跳过计算；非关键 Agent 缺失时以中立值 `0.0` 填充后继续。
+**Fan-in 降级处理**：`RetryPolicy` 处理 API 瞬时失败（超时、Rate Limit），是第一道防线。`entropy_monitor_node` 内联健康检查是第二道：关键 Agent（`critical_agents`，默认 Arbiter + Empath）缺失时标记 `SYSTEM_PARTIAL_FAILURE` 并跳过计算；非关键 Agent 缺失时以中立值 `0.0` 填充后继续。
 
 **震荡检测**：`route_after_entropy` 有四个退出条件：轮次上限、低熵收敛、熵值无下降、周期震荡（round N ≈ round N-2 倾向分向量）。后两者对应梯度下降的早停机制，触发时标注不可调和冲突而非无限循环。单靠熵值对比无法检测对称震荡，必须配合 `stance_history` 的向量差。
 

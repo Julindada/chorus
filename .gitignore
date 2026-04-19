@@ -14,3 +14,6 @@ wheels/
 
 # LangGraph
 .langgraph_api/
+
+# SQLite
+*.db
