@@ -6,7 +6,8 @@ from chorus.infrastructure.dao import load_value_vector, save_value_vector
 
 def intake_node(state: DecisionState) -> dict:
     # ── 加载用户画像 ──────────────────────────────────────────────
-    value_vector = load_value_vector()
+    username = state["username"]
+    value_vector = load_value_vector(username)
     if value_vector is None:
         user_input = interrupt({
             "action": "fill_value_vector",
@@ -17,7 +18,7 @@ def intake_node(state: DecisionState) -> dict:
             dim: max(0.0, min(1.0, float(user_input.get(dim, 0.5))))
             for dim in SCHWARTZ_DIMS
         }
-        save_value_vector(value_vector)
+        save_value_vector(username, value_vector)
 
     # ── 初始化控制字段 ────────────────────────────────────────────
     return {

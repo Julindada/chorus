@@ -10,6 +10,7 @@ class AgentStance(TypedDict):
 
 class DecisionState(TypedDict):
     # Input
+    username: str
     user_narrative: str
     decision_options: list[str]
 

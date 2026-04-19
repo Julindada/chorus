@@ -16,4 +16,4 @@ wheels/
 .langgraph_api/
 
 # SQLite
-*.db
+data/*.db

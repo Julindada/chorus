@@ -1,6 +1,6 @@
 import sqlite3
 
-DB_PATH = "chorus.db"
+DB_PATH = "data/chorus.db"
 
 
 def _get_conn() -> sqlite3.Connection:

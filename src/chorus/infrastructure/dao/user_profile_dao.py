@@ -1,24 +1,26 @@
 import json
 import sqlite3
-from chorus.utils.constants import SCHWARTZ_DIMS
 
-DB_PATH = "chorus.db"
+DB_PATH = "data/chorus.db"
+
+_CREATE_TABLE = (
+    "CREATE TABLE IF NOT EXISTS user_profile "
+    "(id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, "
+    "value_vector TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+)
 
 
 def _get_conn() -> sqlite3.Connection:
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 
-def load_value_vector() -> dict[str, float] | None:
-    """Load Schwartz value vector from SQLite. Returns None if not set."""
+def load_value_vector(username: str) -> dict[str, float] | None:
+    """Load Schwartz value vector for a user. Returns None if not set."""
     conn = _get_conn()
     try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS user_profile "
-            "(id INTEGER PRIMARY KEY, value_vector TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
-        )
+        conn.execute(_CREATE_TABLE)
         row = conn.execute(
-            "SELECT value_vector FROM user_profile ORDER BY updated_at DESC LIMIT 1"
+            "SELECT value_vector FROM user_profile WHERE username = ?", (username,)
         ).fetchone()
         if row:
             return json.loads(row[0])
@@ -29,16 +31,15 @@ def load_value_vector() -> dict[str, float] | None:
     return None
 
 
-def save_value_vector(value_vector: dict[str, float]) -> None:
+def save_value_vector(username: str, value_vector: dict[str, float]) -> None:
     conn = _get_conn()
     try:
+        conn.execute(_CREATE_TABLE)
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS user_profile "
-            "(id INTEGER PRIMARY KEY, value_vector TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
-        )
-        conn.execute(
-            "INSERT INTO user_profile (value_vector) VALUES (?)",
-            (json.dumps(value_vector),),
+            "INSERT INTO user_profile (username, value_vector) VALUES (?, ?) "
+            "ON CONFLICT(username) DO UPDATE SET value_vector = excluded.value_vector, "
+            "updated_at = CURRENT_TIMESTAMP",
+            (username, json.dumps(value_vector)),
         )
         conn.commit()
     finally:
