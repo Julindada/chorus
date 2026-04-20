@@ -141,3 +141,10 @@ SCHWARTZ_DIMS: list[str] = [
     "benevolence",      # 善意
     "universalism",     # 普世
 ]
+
+# Schwartz circumplex axes used for entropy threshold adjustment
+SCHWARTZ_CONSERVATION_DIMS: list[str] = ["conformity", "tradition", "security"]
+SCHWARTZ_OPENNESS_DIMS:     list[str] = ["self_direction", "stimulation"]
+
+# option_scores range from -1.0 to +1.0
+SCORE_RANGE: float = 2.0

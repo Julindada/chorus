@@ -1,7 +1,7 @@
 import json
 
 from chorus.state import DecisionState, StanceResult
-from chorus.utils import AGENT_PROMPTS, STANCE_BOUNDARY, get_model
+from chorus.utils import AGENT_PROMPTS, get_model
 
 _DEBATE_INSTRUCTION = """
 你正在参与一场关于用户决策的辩论。
@@ -50,10 +50,7 @@ def debate_node(state: DecisionState) -> dict:
 
 
 def _selection_reason(rep_a: str, rep_b: str, conflict_type: str, contested_option: str = "") -> str:
-    if conflict_type == "binary":
-        return f"双方评分分歧最大：{rep_a}（最倾向支持）与 {rep_b}（最倾向反对）"
-    else:
-        return f"在「{contested_option}」上分歧最大：{rep_a}（评分最极端）与 {rep_b}（评分最接近多数）展开辩论"
+    return f"在「{contested_option}」上评分分歧最大：{rep_a}（评分最高）与 {rep_b}（评分最低）展开辩论"
 
 
 def _agent_mean(stance: dict) -> float:
@@ -70,41 +67,37 @@ def _option_std(stances: dict, option: str) -> float:
 
 def _select_representatives(
     state: DecisionState,
-) -> tuple[str, str, dict, dict]:
+) -> tuple[str, str, dict, dict, str]:
     stances = state["agent_stances"]
     conflicting = state["conflicting_agents"]
-    means = {n: _agent_mean(stances[n]) for n in conflicting}
 
-    # find the most contested option across all agents (not just conflicting ones)
+    # find the most contested option across all agents (highest std dev)
     all_options: set[str] = set()
     for s in stances.values():
         all_options.update(s["option_scores"].keys())
     contested_option = max(all_options, key=lambda opt: _option_std(stances, opt))
+    opt_scores = {n: stances[n]["option_scores"].get(contested_option, 0.0) for n in conflicting}
 
     if state["conflict_type"] == "binary":
-        opt_scores = {n: stances[n]["option_scores"].get(contested_option, 0.0) for n in conflicting}
-        positive = [n for n in conflicting if opt_scores[n] >  STANCE_BOUNDARY]
-        negative = [n for n in conflicting if opt_scores[n] < -STANCE_BOUNDARY]
-        rep_a = max(positive, key=lambda n: abs(opt_scores[n]))
-        rep_b = max(negative, key=lambda n: abs(opt_scores[n]))
-        allies_a = {n: stances[n] for n in positive if n != rep_a}
-        allies_b = {n: stances[n] for n in negative if n != rep_b}
+        # dynamic median split on contested option scores — no fixed threshold
+        sorted_agents = sorted(conflicting, key=lambda n: opt_scores[n])
+        mid = len(sorted_agents) // 2
+        lower_camp = sorted_agents[:mid]
+        upper_camp = sorted_agents[mid:]
+        rep_a    = upper_camp[-1]   # highest score on contested option
+        rep_b    = lower_camp[0]    # lowest score on contested option
+        allies_a = {n: stances[n] for n in upper_camp if n != rep_a}
+        allies_b = {n: stances[n] for n in lower_camp if n != rep_b}
     else:  # outlier
-        # find the most contested option (highest std dev across agents)
-        options: set[str] = set()
-        for s in stances.values():
-            options.update(s["option_scores"].keys())
-        contested_option = max(options, key=lambda opt: _option_std(stances, opt))
-
-        # most extreme agent on that option vs closest to group mean
-        opt_scores = {n: stances[n]["option_scores"].get(contested_option, 0.0) for n in stances}
-        group_mean = sum(opt_scores.values()) / len(opt_scores)
-        rep_a = max(opt_scores, key=lambda n: abs(opt_scores[n] - group_mean))
-        rep_b = min((n for n in stances if n != rep_a), key=lambda n: abs(opt_scores[n] - group_mean))
+        # most extreme agent on contested option vs closest to group mean
+        all_scores = {n: stances[n]["option_scores"].get(contested_option, 0.0) for n in stances}
+        group_mean = sum(all_scores.values()) / len(all_scores)
+        rep_a    = max(all_scores, key=lambda n: abs(all_scores[n] - group_mean))
+        rep_b    = min((n for n in stances if n != rep_a), key=lambda n: abs(all_scores[n] - group_mean))
         allies_a = {}
         allies_b = {}
 
-    return rep_a, rep_b, allies_a, allies_b, contested_option if state["conflict_type"] != "binary" else ""
+    return rep_a, rep_b, allies_a, allies_b, contested_option
 
 
 def _get_debate_context(history: list[dict]) -> list[dict]:

@@ -19,6 +19,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "langgraph-cli[inmem]>=0.4.23",
+    "pytest>=9.0.3",
 ]
 
 [tool.hatch.build.targets.wheel]

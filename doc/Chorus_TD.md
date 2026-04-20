@@ -82,7 +82,7 @@ bias_detection_node
 | `initial_stances` | dict | Phase 1 原始立场快照，第一次进入 entropy_monitor 时固定，辩论中只读 |
 | `critical_agents` | list[str] | 关键 Agent 名单，缺失时整图崩溃 |
 | `failed_agents` | list[str] | 健康检查检测到的缺失 Agent |
-| `entropy_score` | float | 当前轮熵值（各选项熵值的均值） |
+| `entropy_score` | float | 当前轮熵值（各选项加权标准差的均值，权重来自 value_vector） |
 | `last_entropy_score` | float \| None | 上一轮熵值，用于震荡检测 |
 | `conflict_type` | str | `binary` / `outlier` / `multi_polar` / `converged` |
 | `conflicting_agents` | list[str] | 参与辩论的 Agent 列表 |
@@ -165,13 +165,27 @@ except:
 若 debate_round == 0 → 将当前 agent_stances 存入 initial_stances（之后只读）
 
 计算：
-    entropy = mean(per-option std_dev across agents)
+    # 权重感知熵值：各 Agent 按其 value_vector 均值加权，放大用户真正在意的维度产生的分歧
+    agent_weight[a] = avg(value_vector[d] for d in AGENT_VALUE_MAPPING[a])
+    per-option weighted std dev → entropy = mean across all options
+
     conflict_type, conflicting_agents = classify_conflict(stances)
-        使用各 Agent 的 option_scores 均值作为该 Agent 的整体倾向：
-        binary    : 正向阵营(均值>0.3) ≥2 且 负向阵营(均值<-0.3) ≥2
-        outlier   : 一侧为空，取偏离整体均值最远的 Agent
-        converged : 两侧均为空（全部接近中立）
-        multi_polar: 其余情况
+        分类顺序：converged → outlier → binary → multi_polar
+
+        converged   : max(per-option std dev across agents) < SCORE_RANGE * 0.05
+                      用 per-option std 而非 agent mean std，防止"补偿性偏好"被
+                      误判为收敛（如 A 偏好 X 排斥 Y、B 偏好 Y 排斥 X，均值相近
+                      但实际分歧很大）
+
+        outlier     : 找均值偏离最远的 Agent（outlier_candidate），
+                      计算移除后剩余 std_dev；
+                      if rest_std / total_std < 0.5 → outlier
+                      （该 Agent 贡献了超过一半的整体分散度）
+
+        binary      : 以 agent mean 中位数动态分营，两营各 ≥ 2
+                      无固定阈值，全正/全负分布也能正确识别对立
+
+        multi_polar : 其余情况
     若 conflict_type == multi_polar → 设置 antagonism_flags
 
 快照：将当前 {agent: option_scores} 追加到 stance_history
@@ -183,12 +197,12 @@ except:
 若 conflict_type in (multi_polar, converged) → consensus_node
 若 debate_round >= max_debate_rounds          → consensus_node
 若 entropy < threshold                        → consensus_node（已收敛）
-若 |entropy - last_entropy| < ε              → consensus_node（熵值无下降）
-若 flatten(stance[N]) ≈ flatten(stance[N-2]) → consensus_node（周期震荡）
+若 debate_round > 0 且 |entropy - last_entropy| < ε  → consensus_node（熵值无下降）
+若 debate_round > 0 且 flatten(stance[N]) ≈ flatten(stance[N-2]) → consensus_node（周期震荡）
 否则                                          → debate_node
 ```
 
-阈值 `threshold` 与 `value_vector` 联动；震荡检测将 `stance_history` 展平为 `{agent:option: score}` 向量后比较 L1 距离。
+阈值 `threshold` 与 `value_vector` 联动（保守维度高 → 阈值低，开放维度高 → 阈值高）；震荡检测将 `stance_history` 展平为 `{agent:option: score}` 向量后比较 L1 距离。
 
 ### debate_node
 
@@ -198,9 +212,10 @@ back-edge 起点。代表选取逻辑：
 1. 找分歧最大的选项：max(options, key=option_std_dev across all agents)
 
 2. binary：
-   在该选项上，从 conflicting_agents 中
-   - 正方：分数最高的为代表，其余为 ally
-   - 负方：分数最低的为代表，其余为 ally
+   在该选项上，对 conflicting_agents 评分排序后按中位数分为上下两营：
+   - 上营最高分 → rep_a，其余为 ally_a
+   - 下营最低分 → rep_b，其余为 ally_b
+   （无固定阈值，全正或全负的分布也能正确分营）
 
 3. outlier：
    在该选项上
@@ -325,7 +340,7 @@ alignment = 1 - |agent_score[top_option] - consensus_score[top_option]| / 2
 
 **并行结果汇总降级处理**：分两层。第一层：`RetryPolicy(max_attempts=3)` 处理 API 瞬时失败。第二层：关键 Agent（默认 Arbiter + Empath）重试耗尽后崩溃整图；非关键 Agent 静默跳过，`entropy_monitor_node` 以全零 option_scores 填充后继续。
 
-**震荡检测**：`route_after_entropy` 有五个退出条件：multi_polar/converged、轮次上限、低熵收敛、熵值无下降、周期震荡。震荡检测将 `stance_history` 展平为 `{agent:option: score}` 向量，比较第 N 轮与第 N-2 轮的 L1 距离，对称震荡无法被单纯的熵值差检测，必须依赖向量比较。
+**震荡检测**：`route_after_entropy` 有五个退出条件：multi_polar/converged、轮次上限、低熵收敛、熵值无下降、周期震荡。后两个条件仅在 `debate_round > 0` 时生效——第 0 轮时 `last_entropy_score` 可能携带上一次整图执行的残留值，若不加限制会误触发，导致辩论在开始前就被跳过。震荡检测将 `stance_history` 展平为 `{agent:option: score}` 向量，比较第 N 轮与第 N-2 轮的 L1 距离，对称震荡无法被单纯的熵值差检测，必须依赖向量比较。
 
 **initial_stances 锚点**：`operator.or_` 每轮辩论后覆盖辩论 Agent 的 stances，Phase 1 原始结论随之丢失。`entropy_monitor_node` 在 `debate_round == 0` 时快照存入 `initial_stances`，之后只读。报告中的评分矩阵展示"辩论前→辩论后"格式。
 
