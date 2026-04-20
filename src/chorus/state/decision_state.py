@@ -21,11 +21,15 @@ class DecisionState(TypedDict):
     # Bias metadata
     bias_flags: list[dict]
 
+    # Injected per Send branch, not stored in shared state
+    agent_name: str
+
     # Phase 1: parallel eval — operator.or_ merges Send branches into one dict
     agent_stances: Annotated[dict[str, AgentStance], operator.or_]
+    initial_stances: dict[str, AgentStance]  # Phase 1 snapshot, set once, read-only in debate
 
     # Fan-in health check
-    critical_agents: list[str]          # missing any → SYSTEM_PARTIAL_FAILURE
+    critical_agents: list[str]          # missing any → crash graph
     failed_agents: list[str]            # detected missing after fan-in
 
     # Entropy & debate control
