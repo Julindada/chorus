@@ -3,10 +3,12 @@ import math
 from chorus.state import DecisionState
 from chorus.utils import AGENT_NAMES, STANCE_BOUNDARY
 
-_ENTROPY_BASE        = 0.15
-_ENTROPY_MAX_ADJUST  = 0.10
-_OSCILLATION_EPS     = 0.05
-_CONSENSUS_DIMS      = ["conformity", "tradition", "security"]
+_ENTROPY_BASE          = 0.15
+_CONSERVATION_ADJUST   = 0.08   # high conservation → tighter exit threshold
+_OPENNESS_ADJUST       = 0.05   # high openness → looser exit threshold
+_OSCILLATION_EPS       = 0.05
+_CONSERVATION_DIMS     = ["conformity", "tradition", "security"]
+_OPENNESS_DIMS         = ["self_direction", "stimulation"]
 
 
 def entropy_monitor_node(state: DecisionState) -> dict:
@@ -79,9 +81,14 @@ def _compute_entropy(stances: dict) -> float:
 
 
 def _compute_threshold(value_vector: dict) -> float:
-    # users who score high on consensus-oriented dims expect tighter agreement before exit
-    mean_consensus = sum(value_vector.get(d, 0.5) for d in _CONSENSUS_DIMS) / len(_CONSENSUS_DIMS)
-    return _ENTROPY_BASE + (1 - mean_consensus) * _ENTROPY_MAX_ADJUST
+    # conservation dims lower threshold (prefer closure); openness dims raise it (tolerate ambiguity)
+    mean_conservation = sum(value_vector.get(d, 0.5) for d in _CONSERVATION_DIMS) / len(_CONSERVATION_DIMS)
+    mean_openness     = sum(value_vector.get(d, 0.5) for d in _OPENNESS_DIMS)     / len(_OPENNESS_DIMS)
+    return (
+        _ENTROPY_BASE
+        + (1 - mean_conservation) * _CONSERVATION_ADJUST
+        + mean_openness           * _OPENNESS_ADJUST
+    )
 
 
 def _classify_conflict(stances: dict) -> tuple[str, list[str]]:
