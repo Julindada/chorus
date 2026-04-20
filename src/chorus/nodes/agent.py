@@ -1,8 +1,6 @@
 import json
 
-from pydantic import BaseModel, Field
-
-from chorus.state import DecisionState
+from chorus.state import DecisionState, StanceResult
 from chorus.utils import AGENT_PROMPTS, get_model
 
 _INSTRUCTION = """
@@ -20,18 +18,12 @@ _INSTRUCTION = """
 - confidence：你对此判断的信心分（0.0–1.0）"""
 
 
-class _StanceResult(BaseModel):
-    stance: float = Field(ge=-1.0, le=1.0)
-    reasoning: str
-    confidence: float = Field(ge=0.0, le=1.0)
-
-
 def agent_node(state: DecisionState) -> dict:
     agent_name = state["agent_name"]
     try:
-        result: _StanceResult = (
+        result: StanceResult = (
             get_model()
-            .with_structured_output(_StanceResult)
+            .with_structured_output(StanceResult)
             .invoke(_build_messages(agent_name, state))
         )
         return {"agent_stances": {agent_name: result.model_dump()}}

@@ -1,3 +1,3 @@
-from chorus.state.decision_state import AgentStance, DecisionState
+from chorus.state.decision_state import AgentStance, StanceResult, DecisionState
 
-__all__ = ["AgentStance", "DecisionState"]
+__all__ = ["AgentStance", "StanceResult", "DecisionState"]

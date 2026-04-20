@@ -38,10 +38,9 @@ builder.add_edge("decision_classifier_node",   "bias_detection_node")
 builder.add_edge("bias_detection_node",        "dispatch_node")
 builder.add_edge("agent_node",                 "entropy_monitor_node")
 builder.add_edge("debate_node",                "entropy_monitor_node")
+builder.add_conditional_edges("entropy_monitor_node", route_after_entropy)
 builder.add_edge("consensus_node",             "persona_updater_node")
 builder.add_edge("persona_updater_node",       END)
-
-builder.add_conditional_edges("entropy_monitor_node", route_after_entropy)
 
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 graph = builder.compile(checkpointer=SqliteSaver(conn))

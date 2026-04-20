@@ -39,4 +39,4 @@ def decision_classifier_node(state: DecisionState) -> dict:
     # ── 按类型查预置权重（种子模板首次运行时自动写入 DB）────────────
     template = find_scene_template(decision_type)
 
-    return {"scene_template": template}
+    return {"decision_type": decision_type, "scene_template": template}

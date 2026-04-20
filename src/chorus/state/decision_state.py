@@ -1,11 +1,19 @@
 from typing import Annotated, TypedDict
 import operator
 
+from pydantic import BaseModel, Field
+
 
 class AgentStance(TypedDict):
     stance: float       # -1.0 to 1.0
     reasoning: str
     confidence: float   # 0.0 to 1.0
+
+
+class StanceResult(BaseModel):
+    stance: float = Field(ge=-1.0, le=1.0)
+    reasoning: str
+    confidence: float = Field(ge=0.0, le=1.0)
 
 
 class DecisionState(TypedDict):
@@ -16,13 +24,11 @@ class DecisionState(TypedDict):
 
     # User profile
     value_vector: dict[str, float]      # Schwartz 10-dim weights, 0.0–1.0
+    decision_type: str                  # career | finance | relationship | ...
     scene_template: dict[str, float]    # per-agent scene weights
 
     # Bias metadata
     bias_flags: list[dict]
-
-    # Injected per Send branch, not stored in shared state
-    agent_name: str
 
     # Phase 1: parallel eval — operator.or_ merges Send branches into one dict
     agent_stances: Annotated[dict[str, AgentStance], operator.or_]
