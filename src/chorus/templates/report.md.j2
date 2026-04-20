@@ -1,0 +1,84 @@
+# 决策分析报告
+
+**决策类型：** {{ decision_type_label }}
+**候选选项：** {{ options | join("／") }}
+**生成时间：** {{ generated_at }}
+
+## 决策背景
+
+{{ user_narrative }}
+
+---
+
+{% if bias_flags %}
+## 认知偏误检测
+
+| 偏误 | 涉及维度 | 说明 |
+|------|---------|------|
+{% for b in bias_flags -%}
+| {{ b.bias }} | {{ b.target_agents }} | {{ b.note }} |
+{% endfor -%}
+
+---
+
+{% endif %}
+## 各维度评估
+
+> 每个维度在不知道其他维度意见的情况下对各选项独立打分（-1.0 强烈不建议 ～ +1.0 强烈推荐）。**占比**由决策类型模板和你的价值观共同决定，分数越高说明该维度越贴近你的核心诉求。有变化的评分格式为「辩论前→辩论后」。
+
+| 维度 | 占比 | {% for opt in options %}{{ opt }} | {% endfor %}置信度 |
+|------|-----|{% for opt in options %}---------|{% endfor %}--------|
+{% for a in agents -%}
+| {{ a.label }} | {{ a.weight }} | {% for opt in options %}{{ a.scores[opt] }} | {% endfor %}{{ a.confidence }} |
+{% endfor -%}
+| **综合** | — | {% for opt in options %}{{ summary_scores[opt] }} | {% endfor %}— |
+
+### 各维度论点
+
+{% for a in agents -%}
+**{{ a.label }}**：{{ a.reasoning }}
+
+{% endfor -%}
+
+---
+
+## 选项排名
+
+{% for opt, score in ranked -%}
+{{ loop.index }}. **{{ opt }}**：{{ "%+.2f" | format(score) }}{% if opt == top_option %} ← 推荐{% endif %}
+
+{% endfor %}
+{% if antagonism_flags %}
+> ⚠️ 检测到分歧维度：{{ antagonism_flags }}，各方存在不可调和的对立立场。
+
+{% endif %}
+
+---
+
+{% if debate_rounds %}
+## 辩论过程（共 {{ debate_rounds | length }} 轮）
+
+{% for round in debate_rounds %}
+**第 {{ round.number }} 轮**（{{ round.reason }}）
+{% for entry in round.entries %}
+- {{ entry.label }}：{{ entry.reasoning }}
+{% endfor %}
+
+{% endfor %}
+
+---
+
+{% endif %}
+## 最终建议
+
+{{ final_recommendation }}
+
+---
+
+## 各维度意见占比说明
+
+| 维度 | 占比 | 对应价值观 | 你对此的重视度 |
+|------|-----|-----------|--------------|
+{% for v in value_influences -%}
+| {{ v.label }} | {{ v.weight }} | {{ v.dims }} | {{ v.importance }} |
+{% endfor -%}

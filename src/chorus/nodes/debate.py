@@ -7,18 +7,20 @@ _DEBATE_INSTRUCTION = """
 你正在参与一场关于用户决策的辩论。
 
 输入包含：
-- initial_stance：你在第一轮独立评估时的原始立场（Phase 1 锚点）
-- my_stance：你当前的立场
-- opponent_stance：对方的立场和论据
-- ally_stances：与你同阵营的其他声音（可为空）
+- initial_stance：你在第一轮独立评估时的原始评分（各选项）
+- my_stance：你当前对各选项的评分
+- opponent_stance：对方对各选项的评分和论据
+- ally_stances：与你观点相近的其他声音（可为空）
 - debate_history：辩论历史摘要
 - bias_note：用户叙述中检测到的潜在认知盲点（请主动审视，不要用于攻击对方）
 
 要求：
 - 认真回应对方的核心论点，不要回避
-- 可以更新立场，但需说明是什么论据改变了你的想法
-- 若坚持原立场，需给出新的理由
-- 输出与 Phase 1 相同的结构：stance、reasoning、confidence"""
+- 可以更新各选项评分，但需说明是什么论据改变了你的想法
+- 若坚持原评分，需给出新的理由
+- 输出与第一轮相同的结构：option_scores、reasoning、confidence
+- reasoning 不超过 60 字，尽量少使用心理学术语，用日常语言表达
+- 请以 JSON 格式返回结果"""
 
 _COMPRESSION_PROMPT = (
     "将以下辩论记录压缩为核心分歧摘要，保留关键立场和论点，不超过 200 字。"
@@ -26,7 +28,7 @@ _COMPRESSION_PROMPT = (
 
 
 def debate_node(state: DecisionState) -> dict:
-    rep_a, rep_b, allies_a, allies_b = _select_representatives(state)
+    rep_a, rep_b, allies_a, allies_b, contested_option = _select_representatives(state)
     debate_context = _get_debate_context(state["debate_history"])
     stances = state["agent_stances"]
 
@@ -36,15 +38,34 @@ def debate_node(state: DecisionState) -> dict:
 
     return {
         "agent_stances":  {rep_a: new_a.model_dump(), rep_b: new_b.model_dump()},
-        # increment is the hard guarantee against infinite debate loops
         "debate_round":   state["debate_round"] + 1,
         "debate_history": [{
-            "round": state["debate_round"],
-            "type":  state["conflict_type"],
-            rep_a:   new_a.model_dump(),
-            rep_b:   new_b.model_dump(),
+            "round":  state["debate_round"],
+            "type":   state["conflict_type"],
+            "reason": _selection_reason(rep_a, rep_b, state["conflict_type"], contested_option),
+            rep_a:    new_a.model_dump(),
+            rep_b:    new_b.model_dump(),
         }],
     }
+
+
+def _selection_reason(rep_a: str, rep_b: str, conflict_type: str, contested_option: str = "") -> str:
+    if conflict_type == "binary":
+        return f"双方评分分歧最大：{rep_a}（最倾向支持）与 {rep_b}（最倾向反对）"
+    else:
+        return f"在「{contested_option}」上分歧最大：{rep_a}（评分最极端）与 {rep_b}（评分最接近多数）展开辩论"
+
+
+def _agent_mean(stance: dict) -> float:
+    scores = stance["option_scores"].values()
+    return sum(scores) / len(scores) if scores else 0.0
+
+
+def _option_std(stances: dict, option: str) -> float:
+    import math
+    values = [s["option_scores"].get(option, 0.0) for s in stances.values()]
+    mean = sum(values) / len(values)
+    return math.sqrt(sum((v - mean) ** 2 for v in values) / len(values))
 
 
 def _select_representatives(
@@ -52,32 +73,43 @@ def _select_representatives(
 ) -> tuple[str, str, dict, dict]:
     stances = state["agent_stances"]
     conflicting = state["conflicting_agents"]
-    scores = {n: stances[n]["stance"] for n in conflicting}
+    means = {n: _agent_mean(stances[n]) for n in conflicting}
+
+    # find the most contested option across all agents (not just conflicting ones)
+    all_options: set[str] = set()
+    for s in stances.values():
+        all_options.update(s["option_scores"].keys())
+    contested_option = max(all_options, key=lambda opt: _option_std(stances, opt))
 
     if state["conflict_type"] == "binary":
-        positive = [n for n in conflicting if scores[n] >  STANCE_BOUNDARY]
-        negative = [n for n in conflicting if scores[n] < -STANCE_BOUNDARY]
-        # most extreme agent on each side speaks for the camp
-        rep_a = max(positive, key=lambda n: abs(scores[n]))
-        rep_b = max(negative, key=lambda n: abs(scores[n]))
+        opt_scores = {n: stances[n]["option_scores"].get(contested_option, 0.0) for n in conflicting}
+        positive = [n for n in conflicting if opt_scores[n] >  STANCE_BOUNDARY]
+        negative = [n for n in conflicting if opt_scores[n] < -STANCE_BOUNDARY]
+        rep_a = max(positive, key=lambda n: abs(opt_scores[n]))
+        rep_b = max(negative, key=lambda n: abs(opt_scores[n]))
         allies_a = {n: stances[n] for n in positive if n != rep_a}
         allies_b = {n: stances[n] for n in negative if n != rep_b}
     else:  # outlier
-        rep_a = conflicting[0]
-        mean = sum(s["stance"] for s in stances.values()) / len(stances)
-        # agent closest to mean speaks for the consensus
-        rep_b = min(stances, key=lambda n: abs(stances[n]["stance"] - mean))
-        # non-debating stances not passed to either side — prevents bandwagon pressure
+        # find the most contested option (highest std dev across agents)
+        options: set[str] = set()
+        for s in stances.values():
+            options.update(s["option_scores"].keys())
+        contested_option = max(options, key=lambda opt: _option_std(stances, opt))
+
+        # most extreme agent on that option vs closest to group mean
+        opt_scores = {n: stances[n]["option_scores"].get(contested_option, 0.0) for n in stances}
+        group_mean = sum(opt_scores.values()) / len(opt_scores)
+        rep_a = max(opt_scores, key=lambda n: abs(opt_scores[n] - group_mean))
+        rep_b = min((n for n in stances if n != rep_a), key=lambda n: abs(opt_scores[n] - group_mean))
         allies_a = {}
         allies_b = {}
 
-    return rep_a, rep_b, allies_a, allies_b
+    return rep_a, rep_b, allies_a, allies_b, contested_option if state["conflict_type"] != "binary" else ""
 
 
 def _get_debate_context(history: list[dict]) -> list[dict]:
     if len(history) <= 1:
         return history
-    # compress older rounds to stay within context window; latest round kept verbatim
     summary = get_model().invoke([
         {"role": "system", "content": _COMPRESSION_PROMPT},
         {"role": "user",   "content": json.dumps(history[:-1], ensure_ascii=False)},

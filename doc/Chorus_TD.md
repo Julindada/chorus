@@ -21,48 +21,48 @@ START
   │
   ▼
 intake_node
-  │  解析叙述，加载 value_vector
+  │  加载 value_vector，初始化控制字段
   ▼
 decision_classifier_node
   │  LLM 分类到固定枚举，按类型加载预置权重模板
   ▼
 bias_detection_node
   │  LLM 检测认知偏误，生成 bias_flags Metadata
-  ▼
-dispatch_node ── Send ──► agent_node("Arbiter")    ──┐
-              ── Send ──► agent_node("Empath")     ──┤
-              ── Send ──► agent_node("Soothsayer") ──┤
-              ── Send ──► agent_node("Compass")    ──┤ 结果汇总
-              ── Send ──► agent_node("Narrator")   ──┤ (reducer 合并)
-              ── Send ──► agent_node("Conscience") ──┤
-              ── Send ──► agent_node("Guardian")   ──┘
-                                                   │
-                                                   ▼
-                                         entropy_monitor_node
-                                           │  计算散度，识别冲突对
-                                           │
-                        ┌──────────────────┼──────────────────────────┐
-                        │                  │                           │
-                 收敛分支              高熵分支                   不可调和分支
-          (低熵 / 超出轮次 /        rounds < max               (multi_polar /
-           熵值不降 / 周期震荡)                                  不可调和冲突)
-                        │                  │                           │
-                        │            debate_node                       │
-                        │      (只跑冲突 Agent 对，                      │
-                        │      互相读取上一轮输出，                       │
-                        │      debate_round += 1)                      │
-                        │                  │                           │
-                        │                  └──── back-edge ────────────┤
-                        │                        回到 entropy_monitor   │
-                        ▼                                              │
-                  consensus_node  ◄─────────────────────────────────────┘
-                    │  final_weight = value_vector × scene_template
-                    │  标注拮抗 Agent 对（如超出轮次退出）
-                    ▼
-              persona_updater_node
-                    │  写入 decision_history (SQLite)
-                    ▼
-                   END
+  │
+  ├─(conditional edge: dispatch_node)─►  agent_node("Arbiter")    ──┐
+  │                                  ►  agent_node("Empath")     ──┤
+  │                                  ►  agent_node("Soothsayer") ──┤
+  │                                  ►  agent_node("Compass")    ──┤ 结果汇总
+  │                                  ►  agent_node("Narrator")   ──┤ (reducer 合并)
+  │                                  ►  agent_node("Conscience") ──┤
+  │                                  ►  agent_node("Guardian")   ──┘
+  │                                                               │
+  │                                                               ▼
+  │                                                     entropy_monitor_node
+  │                                                       │  计算散度，识别冲突对
+  │                                                       │
+  │                                  ┌────────────────────┼──────────────────┐
+  │                                  │                    │                  │
+  │                           收敛分支              高熵分支          不可调和分支
+  │                    (低熵 / 超出轮次 /        rounds < max       (multi_polar /
+  │                     熵值不降 / 周期震荡)                          不可调和冲突)
+  │                                  │                    │                  │
+  │                                  │              debate_node              │
+  │                                  │        (选分歧最大的选项，             │
+  │                                  │         取对立最深的一对 Agent，        │
+  │                                  │         debate_round += 1)            │
+  │                                  │                    │                  │
+  │                                  │                    └─── back-edge ────┤
+  │                                  │                         回到 entropy   │
+  │                                  ▼                                       │
+  │                            consensus_node  ◄──────────────────────────────┘
+  │                              │  per-option 加权汇总，输出选项排名
+  │                              ▼
+  │                        persona_updater_node
+  │                              │  写 decision_history (SQLite)
+  │                              │  生成 markdown 报告到 data/reports/
+  │                              ▼
+  │                             END
 ```
 
 ---
@@ -75,25 +75,27 @@ dispatch_node ── Send ──► agent_node("Arbiter")    ──┐
 | `user_narrative` | str | 用户叙述 |
 | `decision_options` | list[str] | 待决策选项 |
 | `value_vector` | dict[str, float] | Schwartz 10 维权重 |
+| `decision_type` | str | 决策类型枚举 |
 | `scene_template` | dict[str, float] | Agent 场景权重模板 |
 | `bias_flags` | list[dict] | 认知偏误 Metadata |
 | `agent_stances` | Annotated[dict, or_] | 各 Agent 评估结果，`operator.or_` 合并各并行分支 |
 | `initial_stances` | dict | Phase 1 原始立场快照，第一次进入 entropy_monitor 时固定，辩论中只读 |
 | `critical_agents` | list[str] | 关键 Agent 名单，缺失时整图崩溃 |
 | `failed_agents` | list[str] | 健康检查检测到的缺失 Agent |
-| `entropy_score` | float | 当前轮熵值 |
+| `entropy_score` | float | 当前轮熵值（各选项熵值的均值） |
 | `last_entropy_score` | float \| None | 上一轮熵值，用于震荡检测 |
-| `conflict_type` | str | `binary` / `outlier` / `multi_polar` |
+| `conflict_type` | str | `binary` / `outlier` / `multi_polar` / `converged` |
 | `conflicting_agents` | list[str] | 参与辩论的 Agent 列表 |
 | `debate_round` | int | 当前辩论轮次 |
 | `max_debate_rounds` | int | 硬上限，默认 3 |
-| `stance_history` | Annotated[list, add] | 每轮倾向分快照，供周期震荡检测 |
+| `stance_history` | Annotated[list, add] | 每轮各 Agent 的 option_scores 快照，供震荡检测 |
 | `debate_history` | Annotated[list, add] | 完整辩论原始记录，逐轮追加 |
-| `consensus` | dict | 加权汇总结果（weighted_score + weights） |
-| `antagonism_flags` | list[str] | 拮抗 Agent 对标注 |
-| `final_recommendation` | str | 最终决策报告 |
+| `consensus` | dict | 加权汇总结果（option_scores + top_option + weights） |
+| `antagonism_flags` | list[str] | 拮抗 Agent 标注 |
+| `final_recommendation` | str | LLM 生成的最终建议文本 |
+| `final_report` | str | 完整 markdown 报告（结构化数据 + LLM 建议） |
 
-`AgentStance` 结构：`stance`（-1.0 到 1.0）、`reasoning`（评估依据）、`confidence`（0.0 到 1.0）。
+`AgentStance` 结构：`option_scores`（各选项评分，-1.0 到 1.0）、`reasoning`（评估依据，≤60 字）、`confidence`（0.0 到 1.0）。
 
 ---
 
@@ -117,14 +119,15 @@ dispatch_node ── Send ──► agent_node("Arbiter")    ──┐
 | `identity` | 身份认同与自我成长 | Narrator、Compass |
 | `ethics` | 伦理与社会责任 | Conscience、Compass |
 
-LLM 以 `temperature=0` 将 `user_narrative` 分类到以上固定枚举（Pydantic `Literal` 约束，无法自造新 key）。再按类型从 DB 加载预置 `scene_template`（种子首次运行时 `INSERT OR IGNORE` 写入）。
+LLM 以 `temperature=0` 将 `user_narrative` 分类到以上固定枚举（Pydantic `Literal` 约束）。再按类型从 DB 加载预置 `scene_template`。
 
 ### bias_detection_node
 
 LLM 以 `temperature=0` 识别叙述中的认知偏误（13 种），生成 `bias_flags`，每条含：偏误名称、最需警惕的 Agent、针对本叙述的描述（≤40 字）。只呈现现象，不做价值判断。
 
+### dispatch_node（conditional edge 路由函数）
 
-### dispatch_node
+不是一个节点，而是 `bias_detection_node` 的 conditional edge 路由函数，返回 `list[Send]`，对每个 `agent_name` 动态创建并行分支：
 
 ```
 返回 Send 列表：对每个 agent_name in AGENT_NAMES
@@ -133,18 +136,21 @@ LLM 以 `temperature=0` 识别叙述中的认知偏误（13 种），生成 `bia
 
 ### agent_node
 
-7 个 Agent 共用同一节点函数，靠 `agent_name` 区分 prompt 模板。Phase 1 单轮调用，**不传入其他 Agent 的 stances**，保证独立评估不被锚定。
+7 个 Agent 共用同一节点函数，靠 `agent_name` 区分 prompt 模板。对**每个候选选项独立打分**（-1.0 到 +1.0），不传入其他 Agent 的 stances，保证独立评估不被锚定。
 
 ```
 try:
     用 LLM structured output 生成 AgentStance
+      - option_scores: {选项名: 分数} 覆盖所有候选选项
+      - reasoning: ≤60 字，少用心理学术语
+      - confidence: 0.0–1.0
     返回 {agent_stances: {agent_name: stance}}
 except:
-    若 agent_name in critical_agents → raise（整图崩溃，拒绝缺失核心维度的决策）
+    若 agent_name in critical_agents → raise（整图崩溃）
     否则 → 返回 {}（静默跳过，entropy_monitor 用中立值填充）
 ```
 
-节点挂载 `RetryPolicy(max_attempts=3)`，`raise` 前已穷尽重试。
+节点挂载 `RetryPolicy(max_attempts=3)`。
 
 ### entropy_monitor_node
 
@@ -153,63 +159,83 @@ except:
 ```
 健康检查：
     missing = AGENT_NAMES - agent_stances.keys()
-    若 missing 含 critical_agents → 标记 SYSTEM_PARTIAL_FAILURE（实际死代码，critical agents 失败已崩溃）
-    若 missing 含非关键 Agent → 以 stance=0.0 填充
+    若 missing 含 critical_agents → 标记 SYSTEM_PARTIAL_FAILURE
+    若 missing 含非关键 Agent → 以 option_scores 全 0.0 填充
 
 若 debate_round == 0 → 将当前 agent_stances 存入 initial_stances（之后只读）
 
 计算：
-    entropy = compute_entropy(所有 stance 值)
+    entropy = mean(per-option std_dev across agents)
     conflict_type, conflicting_agents = classify_conflict(stances)
-        binary    : 正向阵营(>0.3) ≥2 且 负向阵营(<-0.3) ≥2
-        outlier   : 一侧为空，取偏离均值最远的 Agent
+        使用各 Agent 的 option_scores 均值作为该 Agent 的整体倾向：
+        binary    : 正向阵营(均值>0.3) ≥2 且 负向阵营(均值<-0.3) ≥2
+        outlier   : 一侧为空，取偏离整体均值最远的 Agent
+        converged : 两侧均为空（全部接近中立）
         multi_polar: 其余情况
-    若 conflict_type == multi_polar → 设置 antagonism_flags = conflicting_agents
+    若 conflict_type == multi_polar → 设置 antagonism_flags
 
-快照：将当前各 Agent stance 追加到 stance_history
+快照：将当前 {agent: option_scores} 追加到 stance_history
 ```
 
-### 条件路由函数
+### 条件路由函数 route_after_entropy
 
 ```
-route_after_entropy:
-    若 conflict_type == multi_polar   → consensus_node（辩论无法收敛）
-    若 debate_round >= max_debate_rounds → consensus_node
-    若 entropy < threshold            → consensus_node（已收敛）
-    若 |entropy - last_entropy| < ε   → consensus_node（熵值无下降）
-    若 |stance[N] - stance[N-2]| < ε  → consensus_node（周期震荡）
-    否则                              → debate_node
+若 conflict_type in (multi_polar, converged) → consensus_node
+若 debate_round >= max_debate_rounds          → consensus_node
+若 entropy < threshold                        → consensus_node（已收敛）
+若 |entropy - last_entropy| < ε              → consensus_node（熵值无下降）
+若 flatten(stance[N]) ≈ flatten(stance[N-2]) → consensus_node（周期震荡）
+否则                                          → debate_node
 ```
 
-阈值 `threshold` 与 `value_vector` 联动；震荡阈值 `ε = 0.05`。
+阈值 `threshold` 与 `value_vector` 联动；震荡检测将 `stance_history` 展平为 `{agent:option: score}` 向量后比较 L1 距离。
 
 ### debate_node
 
-back-edge 起点。`debate_history` 承担对话历史角色，逐轮追加后完整存储，但传入 LLM 时压缩（旧轮次摘要 + 最新一轮原文），防止 context 随轮次膨胀。
-
-根据 `conflict_type` 执行两种策略：
-
-**binary**：每侧取倾向分绝对值最大的 Agent 为代表，同侧其余 stances 作为"阵营摘要"传入，非辩论 Agent stances 不传（防从众压力）。
-
-**outlier**：异见者 vs. 距均值最近的共识代表，其余 Agent stances 不传。
+back-edge 起点。代表选取逻辑：
 
 ```
-选出 rep_a, rep_b 及各自 ally_stances
-debate_context = 压缩后的 debate_history
-rep_a 新 stance = LLM(rep_a prompt + initial_stance=initial_stances[rep_a]
-                                    + my_stance=当前stance
-                                    + opponent=rep_b + allies + context)
-rep_b 新 stance = LLM(rep_b prompt + initial_stance=initial_stances[rep_b]
-                                    + my_stance=当前stance
-                                    + opponent=rep_a + allies + context)
-返回更新后的 agent_stances、debate_round+1、追加 debate_history
+1. 找分歧最大的选项：max(options, key=option_std_dev across all agents)
+
+2. binary：
+   在该选项上，从 conflicting_agents 中
+   - 正方：分数最高的为代表，其余为 ally
+   - 负方：分数最低的为代表，其余为 ally
+
+3. outlier：
+   在该选项上
+   - 离全体均值最远的 Agent 为代表 A
+   - 最接近全体均值的 Agent 为代表 B
+   - 不传 ally（防多数施压）
 ```
 
-`bias_flags` 在辩论 prompt 中以"用户潜在认知盲点"形式单独呈现，提示 Agent 主动审视，不转化为攻击指令。
+辩论执行：
+
+```
+debate_context = 压缩后的 debate_history（旧轮摘要 + 最新轮原文）
+rep_a 新 stance = LLM(prompt + initial_stance + my_stance + opponent + allies + context)
+rep_b 新 stance = LLM(prompt + initial_stance + my_stance + opponent + allies + context)
+返回更新后的 agent_stances、debate_round+1、追加 debate_history（含选择原因 reason 字段）
+```
+
+`bias_flags` 以"用户潜在认知盲点"形式单独呈现，提示 Agent 主动审视，不转化为攻击指令。
 
 ### consensus_node
 
-权重两层计算：`scene_template`（场景基础权重）× `value_vector` 分量均值（Agent-Schwartz 映射修正），归一化后加权汇总各 Agent stance 得 `weighted_score`。再调用 LLM 综合生成最终报告，`antagonism_flags` 直接透传写入报告，不掩盖冲突。
+```
+权重两层计算：
+    value_score[a]  = avg(value_vector[d] for d in AGENT_VALUE_MAPPING[a])
+    raw_weight[a]   = scene_template[a] × value_score[a]
+    weights[a]      = raw_weight[a] / sum(raw_weight)   # 归一化，使 Σweights = 1
+
+per-option 加权得分：
+    option_scores[opt] = Σ agent_stances[a].option_scores[opt] × weights[a]
+
+top_option = argmax(option_scores)
+ranked_options = sorted(option_scores, descending)
+
+调用 LLM 生成最终建议（≤300 字，少用心理学术语）
+```
 
 **Agent-Schwartz 映射**：
 
@@ -225,13 +251,16 @@ rep_b 新 stance = LLM(rep_b prompt + initial_stance=initial_stances[rep_b]
 
 ### persona_updater_node
 
-纯 I/O 节点，不修改 State。对每个 Agent 计算对齐度：
+两项职责：
 
+**1. 写入 SQLite：** 对每个 Agent，以 `top_option` 的评分计算对齐度：
 ```
-alignment = 1 - |agent_stance - weighted_score| / 2
+alignment = 1 - |agent_score[top_option] - consensus_score[top_option]| / 2
 ```
 
-映射到 [0, 1]，写入 SQLite `decision_history` 表供 Evolving Persona 使用。
+**2. 生成 markdown 报告：** 从 state 准备数据 dict，用 Jinja2 渲染 `templates/report.md.j2`，保存到 `data/reports/<username>_<timestamp>.md`。
+
+报告包含：决策背景、认知偏误、各维度 × 各选项评分矩阵（含辩论前后对比）、选项排名、辩论过程（含选择依据）、最终建议、意见占比说明。
 
 ---
 
@@ -239,20 +268,21 @@ alignment = 1 - |agent_stance - weighted_score| / 2
 
 ```
 节点注册：
-    intake, decision_classifier, bias_detection, dispatch,
+    intake, decision_classifier, bias_detection,
     agent_node (RetryPolicy max=3),
     entropy_monitor, debate, consensus, persona_updater
 
 静态边：
-    START → intake → decision_classifier → bias_detection → dispatch
-    agent_node → entropy_monitor   （结果汇总，Send 动态分支无需静态声明）
-    debate → entropy_monitor        （back-edge，构成循环）
+    START → intake → decision_classifier → bias_detection
+    agent_node → entropy_monitor
+    debate → entropy_monitor（back-edge）
     consensus → persona_updater → END
 
 条件边：
-    entropy_monitor --route_after_entropy--> debate | consensus
+    bias_detection_node --dispatch_node--> ["agent_node"]
+    entropy_monitor_node --route_after_entropy--> ["debate_node", "consensus_node"]
 
-编译：挂载 SqliteSaver(chorus.db) 作为 Checkpointer
+编译：无自定义 Checkpointer（LangGraph API 平台管理持久化）
 ```
 
 ---
@@ -261,10 +291,11 @@ alignment = 1 - |agent_stance - weighted_score| / 2
 
 | 组件 | 选型 | 说明 |
 |------|------|------|
-| 框架 | LangGraph (Python) | 支持循环、Checkpointer、Annotated State |
-| LLM | Qwen3.6-Plus (DashScope) | 通义千问，通过 `langchain_community.ChatTongyi` 接入，模型名由 `CHORUS_LLM_MODEL` 环境变量配置 |
-| 存储 | SQLite | 状态持久化（Checkpointer）+ 决策历史（Evolving Persona）+ 场景模板注册中心 |
-| 调试 | LangGraph Inspector | 可视化 Agent 节点流向与状态变化 |
+| 框架 | LangGraph (Python) | 支持循环、Annotated State、Send API |
+| LLM | Qwen（DashScope）| 通过 `langchain_openai.ChatOpenAI` + DashScope compatible endpoint 接入，模型名由 `LLM_MODEL` 环境变量配置 |
+| 存储 | SQLite | 决策历史（Evolving Persona）+ 场景模板注册中心 |
+| 报告模板 | Jinja2 | `templates/report.md.j2`，数据准备与格式完全分离 |
+| 调试 | LangGraph Studio | 可视化节点流向与 State 变化 |
 
 ---
 
@@ -276,26 +307,28 @@ alignment = 1 - |agent_stance - weighted_score| / 2
 |------|----------|-----------|
 | decision_classifier_node | 单轮 | user_narrative；temperature=0，只做分类 |
 | bias_detection_node | 单轮 | user_narrative；temperature=0，只识别偏误 |
-| agent_node（Phase 1） | 单轮 | user_narrative + bias_flags + value_vector，隔离其他 Agent stances |
+| agent_node（Phase 1） | 单轮 | user_narrative + bias_flags + value_vector + decision_options，隔离其他 Agent stances |
 | debate_node | 多轮 | my_stance + opponent + ally_stances + debate_context（压缩视图），隔离非辩论 Agent stances |
-| consensus_node | 单轮 | 全部 agent_stances + debate_history + value_vector + scene_template |
+| consensus_node | 单轮 | 全部 agent_stances + option_scores + ranked_options + debate_history |
 
-`Checkpointer` 是跨会话的状态快照，与 LLM 对话历史是两个独立概念。`debate_history` 才是辩论阶段的对话历史，由 `operator.add` reducer 在 State 中逐轮追加。
+**多选项评分设计**：每个 Agent 对所有候选选项独立打分，避免将多选题坍缩为二元立场。熵值计算为各选项跨 Agent 标准差的均值；共识加权分别对每个选项汇总，最终输出选项排名而非单一建议分。
+
+**debate_node 代表选取**：先找跨 Agent 分歧最大的选项（标准差最高），再在该选项上选评分最对立的两个 Agent 进行辩论。binary 与 outlier 冲突类型共用同一选取逻辑，区别在于 ally 是否传入。
 
 **agent_node 复用**：7 个 Agent 共享一个节点函数，靠 `agent_name` 参数区分 prompt 模板，扩展新 Agent 不需要修改图结构。
 
-**debate_node 两种冲突策略**：binary（阵营代表对抗）、outlier（异见者 vs 共识代表）。multi_polar 不进入 debate_node，由路由直接送往 consensus_node 加权汇总，不强行收敛。
+**dispatch_node 是路由函数而非节点**：返回 `list[Send]` 的函数不能作为普通节点使用，必须注册为 `add_conditional_edges` 的路由函数，并声明目标节点列表供 LangGraph 静态分析。
 
-**单库双表**：`SqliteSaver` 负责 LangGraph 状态持久化（checkpoint 表），`persona_updater_node` 的 DAO 负责写入 `decision_history` 表，两者共用同一个 `chorus.db`，互不干涉。
+**单库双表**：`persona_updater_node` 的 DAO 负责写入 `decision_history` 表，`scene_template` 注册中心在同一 `chorus.db` 的独立表，互不干涉。
 
-**最大辩论轮次**：`max_debate_rounds` 建议默认值为 3，可由用户在初始化时配置。超出轮次时 `consensus_node` 在报告中明确标注拮抗 Agent 对，不掩盖冲突。
+**最大辩论轮次**：`max_debate_rounds` 默认 3，可在初始化时配置。超出轮次时 consensus 报告明确标注拮抗维度，不掩盖冲突。
 
-**并行结果汇总降级处理**：分两层，语义不同。第一层：`RetryPolicy(max_attempts=3)` 处理 API 瞬时失败（超时、Rate Limit）。第二层：`agent_node` 内部区分降级策略——关键 Agent（默认 Arbiter + Empath）重试耗尽后崩溃整图；非关键 Agent 静默跳过，`entropy_monitor_node` 以中立值 `0.0` 填充后继续。
+**并行结果汇总降级处理**：分两层。第一层：`RetryPolicy(max_attempts=3)` 处理 API 瞬时失败。第二层：关键 Agent（默认 Arbiter + Empath）重试耗尽后崩溃整图；非关键 Agent 静默跳过，`entropy_monitor_node` 以全零 option_scores 填充后继续。
 
-**震荡检测**：`route_after_entropy` 有五个退出条件：multi_polar、轮次上限、低熵收敛、熵值无下降、周期震荡（round N ≈ round N-2 倾向分向量）。后两者对应梯度下降的早停机制，触发时标注不可调和冲突而非无限循环。单靠熵值对比无法检测对称震荡，必须配合 `stance_history` 的向量差。
+**震荡检测**：`route_after_entropy` 有五个退出条件：multi_polar/converged、轮次上限、低熵收敛、熵值无下降、周期震荡。震荡检测将 `stance_history` 展平为 `{agent:option: score}` 向量，比较第 N 轮与第 N-2 轮的 L1 距离，对称震荡无法被单纯的熵值差检测，必须依赖向量比较。
 
-**initial_stances 锚点**：`operator.or_` 每轮辩论后会覆盖 `agent_stances` 中辩论 Agent 的立场，Phase 1 原始结论随之丢失。`entropy_monitor_node` 在 `debate_round == 0` 时将 `agent_stances` 快照存入 `initial_stances`，此后只读。辩论 prompt 中同时传入 `initial_stance` 和 `my_stance`，让 LLM 感知自身立场漂移幅度，防止被过度说服；`consensus_node` 也可用此字段在报告中呈现"初始 → 最终"的立场演变轨迹。
+**initial_stances 锚点**：`operator.or_` 每轮辩论后覆盖辩论 Agent 的 stances，Phase 1 原始结论随之丢失。`entropy_monitor_node` 在 `debate_round == 0` 时快照存入 `initial_stances`，之后只读。报告中的评分矩阵展示"辩论前→辩论后"格式。
 
 **debate_history 压缩**：State 中始终保留完整原始记录。传入 LLM 的是压缩视图：超过 1 轮时将旧轮次压缩为摘要，只保留最新一轮原文，防止 context window 随轮次膨胀。
 
-**bias_flags 在辩论阶段的权重**：辩论 prompt 中 `bias_flags` 单独呈现为"用户潜在认知盲点"，提示 Agent 主动审视，而非转化为攻击指令。保持与 Phase 1"只呈现不裁判"的一致性原则。
+**报告生成**：`persona_updater_node` 的 `_prepare_data()` 负责数据准备，`_render_report()` 负责 Jinja2 渲染，两层完全分离。模板文件 `templates/report.md.j2` 可独立修改而不触碰 Python 逻辑。

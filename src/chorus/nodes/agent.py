@@ -4,7 +4,7 @@ from chorus.state import DecisionState, StanceResult
 from chorus.utils import AGENT_PROMPTS, get_model
 
 _INSTRUCTION = """
-根据用户的决策叙述和选项，从你的视角给出评估。
+根据用户的决策叙述，从你的视角对每个候选选项独立评估。
 
 输入包含：
 - user_narrative：用户的决策叙述
@@ -13,9 +13,10 @@ _INSTRUCTION = """
 - bias_flags：已检测到的认知偏误（仅供参考，不要对偏误本身发表评判）
 
 输出要求：
-- stance：你的倾向分（-1.0 = 强烈不建议，0.0 = 中立，+1.0 = 强烈建议）
-- reasoning：立足于你的心理维度的评估依据，不超过 150 字
-- confidence：你对此判断的信心分（0.0–1.0）"""
+- option_scores：对每个候选选项的评分，key 为选项名称，value 为 -1.0（强烈不建议）到 +1.0（强烈推荐），必须包含所有选项
+- reasoning：立足于你的心理维度的综合评估依据，不超过 60 字，尽量少使用心理学术语，用日常语言表达
+- confidence：你对此判断的信心分（0.0–1.0）
+- 请以 JSON 格式返回结果"""
 
 
 def agent_node(state: DecisionState) -> dict:

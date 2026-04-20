@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from chorus.state import DecisionState
 from chorus.utils import AGENT_NAMES, get_model
 
@@ -39,7 +39,9 @@ _SYSTEM_PROMPT = f"""你是一位认知偏误识别专家。你的唯一职责�
 规则：
 - 仅报告有明确证据的偏误，不要过度推断
 - 同一偏误只报告一次
-- 若未检测到任何偏误，返回空列表"""
+- 若未检测到任何偏误，flags 返回空列表
+
+请以 JSON 格式返回结果，结构为：{{"flags": [...]}}"""
 
 
 class BiasFlag(BaseModel):
@@ -50,6 +52,13 @@ class BiasFlag(BaseModel):
 
 class BiasDetectionResult(BaseModel):
     flags: list[BiasFlag]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _wrap_list(cls, v):
+        if isinstance(v, list):
+            return {"flags": v}
+        return v
 
 
 def bias_detection_node(state: DecisionState) -> dict:

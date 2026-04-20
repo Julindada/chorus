@@ -1,4 +1,7 @@
 import os
 
-DB_PATH: str = os.getenv("CHORUS_DB_PATH", "data/chorus.db")
-LLM_MODEL: str = os.getenv("CHORUS_LLM_MODEL", "qwen3.6-plus")
+DATA_DIR: str = os.getenv("CHORUS_DATA_DIR", "data")
+DB_PATH: str  = os.getenv("CHORUS_DB_PATH", f"{DATA_DIR}/chorus.db")
+LLM_MODEL: str = os.getenv("LLM_MODEL", "qwen3.6-plus")
+DASHSCOPE_API_KEY: str = os.getenv("DASHSCOPE_V2_API_KEY", "")
+DASHSCOPE_BASE_URL: str = "https://dashscope-us.aliyuncs.com/compatible-mode/v1"

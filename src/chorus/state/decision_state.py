@@ -1,17 +1,18 @@
-from typing import Annotated, TypedDict
+from typing import Annotated
+from typing_extensions import TypedDict
 import operator
 
 from pydantic import BaseModel, Field
 
 
 class AgentStance(TypedDict):
-    stance: float       # -1.0 to 1.0
+    option_scores: dict[str, float]  # option → score (-1.0 to 1.0)
     reasoning: str
-    confidence: float   # 0.0 to 1.0
+    confidence: float                # 0.0 to 1.0
 
 
 class StanceResult(BaseModel):
-    stance: float = Field(ge=-1.0, le=1.0)
+    option_scores: dict[str, float]
     reasoning: str
     confidence: float = Field(ge=0.0, le=1.0)
 
@@ -56,3 +57,4 @@ class DecisionState(TypedDict):
     consensus: dict
     antagonism_flags: list[str]
     final_recommendation: str
+    final_report: str
