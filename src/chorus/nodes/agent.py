@@ -19,13 +19,13 @@ _INSTRUCTION = """
 - 请以 JSON 格式返回结果"""
 
 
-def agent_node(state: DecisionState) -> dict:
+async def agent_node(state: DecisionState) -> dict:
     agent_name = state["agent_name"]
     try:
-        result: StanceResult = (
+        result: StanceResult = await (
             get_model()
             .with_structured_output(StanceResult)
-            .invoke(_build_messages(agent_name, state))
+            .ainvoke(_build_messages(agent_name, state))
         )
         return {"agent_stances": {agent_name: result.model_dump()}}
     except Exception:

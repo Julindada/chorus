@@ -1,12 +1,12 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from chorus.state import DecisionState
 from chorus.utils import get_model, DecisionType, DECISION_TYPES
 from chorus.infrastructure.dao import find_scene_template
 
 
 class ClassificationResult(BaseModel):
-    decision_type: DecisionType
-    reasoning: str
+    decision_type: DecisionType = Field(description="最匹配的决策类型，必须是预定义枚举之一")
+    reasoning: str = Field(description="分类依据，不超过 50 字")
 
 
 _TYPE_DESCRIPTIONS = "\n".join(
@@ -30,12 +30,12 @@ _PROMPT = f"""你是一位心理决策分析师。请将以下决策描述归类
 {{narrative}}"""
 
 
-def decision_classifier_node(state: DecisionState) -> dict:
+async def decision_classifier_node(state: DecisionState) -> dict:
     narrative = state["user_narrative"]
 
     # ── LLM 分类 → 固定枚举的决策类型 ────────────────────────────
     llm = get_model(temperature=0.0).with_structured_output(ClassificationResult)
-    result: ClassificationResult = llm.invoke(_PROMPT.format(narrative=narrative))
+    result: ClassificationResult = await llm.ainvoke(_PROMPT.format(narrative=narrative))
     decision_type = result.decision_type
 
     # ── 按类型查预置权重（种子模板首次运行时自动写入 DB）────────────

@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 from chorus.state import DecisionState, StanceResult
@@ -27,14 +28,16 @@ _COMPRESSION_PROMPT = (
 )
 
 
-def debate_node(state: DecisionState) -> dict:
+async def debate_node(state: DecisionState) -> dict:
     rep_a, rep_b, allies_a, allies_b, contested_option = _select_representatives(state)
-    debate_context = _get_debate_context(state["debate_history"])
+    debate_context = await _get_debate_context(state["debate_history"])
     stances = state["agent_stances"]
 
     llm = get_model().with_structured_output(StanceResult)
-    new_a: StanceResult = llm.invoke(_build_messages(rep_a, stances[rep_b], allies_a, state, debate_context))
-    new_b: StanceResult = llm.invoke(_build_messages(rep_b, stances[rep_a], allies_b, state, debate_context))
+    new_a, new_b = await asyncio.gather(
+        llm.ainvoke(_build_messages(rep_a, stances[rep_b], allies_a, state, debate_context)),
+        llm.ainvoke(_build_messages(rep_b, stances[rep_a], allies_b, state, debate_context)),
+    )
 
     return {
         "agent_stances":  {rep_a: new_a.model_dump(), rep_b: new_b.model_dump()},
@@ -100,10 +103,10 @@ def _select_representatives(
     return rep_a, rep_b, allies_a, allies_b, contested_option
 
 
-def _get_debate_context(history: list[dict]) -> list[dict]:
+async def _get_debate_context(history: list[dict]) -> list[dict]:
     if len(history) <= 1:
         return history
-    summary = get_model().invoke([
+    summary = await get_model().ainvoke([
         {"role": "system", "content": _COMPRESSION_PROMPT},
         {"role": "user",   "content": json.dumps(history[:-1], ensure_ascii=False)},
     ])

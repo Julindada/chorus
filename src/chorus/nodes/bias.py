@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 from chorus.state import DecisionState
 from chorus.utils import AGENT_NAMES, get_model
 
@@ -45,13 +45,13 @@ _SYSTEM_PROMPT = f"""你是一位认知偏误识别专家。你的唯一职责�
 
 
 class BiasFlag(BaseModel):
-    bias: str
-    target_agents: list[AgentName]
-    note: str
+    bias: str = Field(description="认知偏误名称")
+    target_agents: list[AgentName] = Field(description="最需要警惕此偏误的心理维度 Agent 列表")
+    note: str = Field(description="针对该叙述的具体说明，只描述现象不裁判对错，不超过 40 字")
 
 
 class BiasDetectionResult(BaseModel):
-    flags: list[BiasFlag]
+    flags: list[BiasFlag] = Field(description="检测到的认知偏误列表，未检测到则为空列表")
 
     @model_validator(mode="before")
     @classmethod
@@ -61,11 +61,11 @@ class BiasDetectionResult(BaseModel):
         return v
 
 
-def bias_detection_node(state: DecisionState) -> dict:
+async def bias_detection_node(state: DecisionState) -> dict:
     narrative = state["user_narrative"]
 
     llm = get_model(temperature=0.0).with_structured_output(BiasDetectionResult)
-    result: BiasDetectionResult = llm.invoke([
+    result: BiasDetectionResult = await llm.ainvoke([
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user",   "content": narrative},
     ])

@@ -12,9 +12,9 @@ class AgentStance(TypedDict):
 
 
 class StanceResult(BaseModel):
-    option_scores: dict[str, float]
-    reasoning: str
-    confidence: float = Field(ge=0.0, le=1.0)
+    option_scores: dict[str, float] = Field(description="每个候选选项的评分，key 为选项名称，value 为 -1.0（强烈不建议）到 +1.0（强烈推荐），必须包含所有选项")
+    reasoning: str = Field(description="立足于你的心理维度的综合评估依据，不超过 60 字，用日常语言表达")
+    confidence: float = Field(ge=0.0, le=1.0, description="对此判断的信心分，0.0 到 1.0")
 
 
 class DecisionState(TypedDict):

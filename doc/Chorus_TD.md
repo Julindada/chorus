@@ -28,6 +28,9 @@ decision_classifier_node
   ▼
 bias_detection_node
   │  LLM 检测认知偏误，生成 bias_flags Metadata
+  ▼
+reality_node  （规划中）
+  │  实体提取 → 联网搜索 → 落差检测，输出 reality_context / reality_discrepancies
   │
   ├─(conditional edge: dispatch_node)─►  agent_node("Arbiter")    ──┐
   │                                  ►  agent_node("Empath")     ──┤
@@ -78,6 +81,8 @@ bias_detection_node
 | `decision_type` | str | 决策类型枚举 |
 | `scene_template` | dict[str, float] | Agent 场景权重模板 |
 | `bias_flags` | list[dict] | 认知偏误 Metadata |
+| `reality_context` | dict | 联网核查摘要，key 为实体名，value 为核实后的事实描述 |
+| `reality_discrepancies` | list[dict] | 叙述与现实的落差清单，每条含 `entity`、`narrative_claim`、`reality_fact`、`severity`（low/medium/high） |
 | `agent_stances` | Annotated[dict, or_] | 各 Agent 评估结果，`operator.or_` 合并各并行分支 |
 | `initial_stances` | dict | Phase 1 原始立场快照，第一次进入 entropy_monitor 时固定，辩论中只读 |
 | `critical_agents` | list[str] | 关键 Agent 名单，缺失时整图崩溃 |
@@ -125,9 +130,36 @@ LLM 以 `temperature=0` 将 `user_narrative` 分类到以上固定枚举（Pydan
 
 LLM 以 `temperature=0` 识别叙述中的认知偏误（13 种），生成 `bias_flags`，每条含：偏误名称、最需警惕的 Agent、针对本叙述的描述（≤40 字）。只呈现现象，不做价值判断。
 
+### reality_node（规划中）
+
+三步流水线，将用户叙述锚定到可核实的外部事实：
+
+```
+Step 1 — 实体提取（LLM，temperature=0）
+    从 user_narrative 提取可联网核查的实体列表
+    实体类型：公司/城市/薪资范围/行业趋势/政策法规/统计数据
+    输出：entities: list[str]
+
+Step 2 — 联网搜索（Tool call，每实体 1 次）
+    对每个实体调用搜索工具，获取近 6 个月内的权威来源摘要
+    结果写入 reality_context: {实体: 核实摘要}
+
+Step 3 — 落差检测（LLM，temperature=0）
+    对比 user_narrative 与 reality_context
+    输出 reality_discrepancies: list[{
+        entity: str,
+        narrative_claim: str,    # 用户叙述中的具体说法
+        reality_fact: str,       # 核实后的事实
+        severity: "low"|"medium"|"high"
+    }]
+    若无落差则返回空列表
+```
+
+降级行为：搜索工具不可用时跳过 Step 2-3，`reality_context = {}`、`reality_discrepancies = []`，后续节点以"无现实数据"模式运行。
+
 ### dispatch_node（conditional edge 路由函数）
 
-不是一个节点，而是 `bias_detection_node` 的 conditional edge 路由函数，返回 `list[Send]`，对每个 `agent_name` 动态创建并行分支：
+不是一个节点，而是 `reality_node` 的 conditional edge 路由函数，返回 `list[Send]`，对每个 `agent_name` 动态创建并行分支：
 
 ```
 返回 Send 列表：对每个 agent_name in AGENT_NAMES
@@ -144,6 +176,9 @@ try:
       - option_scores: {选项名: 分数} 覆盖所有候选选项
       - reasoning: ≤60 字，少用心理学术语
       - confidence: 0.0–1.0
+    上下文包含：user_narrative + bias_flags + value_vector + decision_options
+              + reality_context（核实事实摘要）
+              + reality_discrepancies（叙述与现实落差，按各 Agent 心理维度呈现）
     返回 {agent_stances: {agent_name: stance}}
 except:
     若 agent_name in critical_agents → raise（整图崩溃）
@@ -283,18 +318,18 @@ alignment = 1 - |agent_score[top_option] - consensus_score[top_option]| / 2
 
 ```
 节点注册：
-    intake, decision_classifier, bias_detection,
+    intake, decision_classifier, bias_detection, reality（规划中）,
     agent_node (RetryPolicy max=3),
     entropy_monitor, debate, consensus, persona_updater
 
 静态边：
-    START → intake → decision_classifier → bias_detection
+    START → intake → decision_classifier → bias_detection → reality
     agent_node → entropy_monitor
     debate → entropy_monitor（back-edge）
     consensus → persona_updater → END
 
 条件边：
-    bias_detection_node --dispatch_node--> ["agent_node"]
+    reality_node --dispatch_node--> ["agent_node"]
     entropy_monitor_node --route_after_entropy--> ["debate_node", "consensus_node"]
 
 编译：无自定义 Checkpointer（LangGraph API 平台管理持久化）
@@ -322,7 +357,8 @@ alignment = 1 - |agent_score[top_option] - consensus_score[top_option]| / 2
 |------|----------|-----------|
 | decision_classifier_node | 单轮 | user_narrative；temperature=0，只做分类 |
 | bias_detection_node | 单轮 | user_narrative；temperature=0，只识别偏误 |
-| agent_node（Phase 1） | 单轮 | user_narrative + bias_flags + value_vector + decision_options，隔离其他 Agent stances |
+| reality_node（规划中） | 单轮 × 3步 | Step1: user_narrative → entities；Step2: 搜索工具（每实体 1 次）；Step3: narrative + reality_context → discrepancies；全部 temperature=0 |
+| agent_node（Phase 1） | 单轮 | user_narrative + bias_flags + value_vector + decision_options + reality_context + reality_discrepancies，隔离其他 Agent stances |
 | debate_node | 多轮 | my_stance + opponent + ally_stances + debate_context（压缩视图），隔离非辩论 Agent stances |
 | consensus_node | 单轮 | 全部 agent_stances + option_scores + ranked_options + debate_history |
 

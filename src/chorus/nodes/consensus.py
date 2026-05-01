@@ -14,13 +14,13 @@ _SYSTEM_PROMPT = (
 )
 
 
-def consensus_node(state: DecisionState) -> dict:
+async def consensus_node(state: DecisionState) -> dict:
     stances = state["agent_stances"]
     weights = _compute_weights(stances, state["value_vector"], state["scene_template"])
     option_scores = _compute_option_scores(stances, weights)
     top_option = max(option_scores, key=option_scores.get)
 
-    result = get_model().invoke(_build_messages(state, weights, option_scores))
+    result = await get_model().ainvoke(_build_messages(state, weights, option_scores))
 
     return {
         "consensus": {

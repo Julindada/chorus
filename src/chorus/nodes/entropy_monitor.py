@@ -20,7 +20,7 @@ _CONVERGE_STD        = SCORE_RANGE * 0.05
 _OUTLIER_VARIANCE_RATIO = 0.5
 
 
-def entropy_monitor_node(state: DecisionState) -> dict:
+async def entropy_monitor_node(state: DecisionState) -> dict:
     stances = dict(state["agent_stances"])
 
     missing = [a for a in AGENT_NAMES if a not in stances]

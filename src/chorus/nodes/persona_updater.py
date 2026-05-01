@@ -26,15 +26,15 @@ _DECISION_TYPE_LABELS = {
     "finance":      "财务决策",
     "relationship": "关系决策",
     "relocation":   "城市迁移",
-    "education":    "教育选择",
-    "lifestyle":    "生活方式",
-    "other":        "其他",
+    "health":       "健康决策",
+    "identity":     "身份认同",
+    "ethics":       "伦理决策",
 }
 
 _TEMPLATE_PATH = files("chorus.templates").joinpath("report.md.j2")
 
 
-def persona_updater_node(state: DecisionState) -> dict:
+async def persona_updater_node(state: DecisionState) -> dict:
     decision_type  = state["decision_type"]
     timestamp      = datetime.now().isoformat()
     top_option     = state["consensus"]["top_option"]
@@ -158,15 +158,3 @@ def _render_report(data: dict) -> str:
     return env.from_string(template_str).render(**data)
 
 
-def _stance_bar(score: float, width: int = 21) -> str:
-    pos = round((score + 1) / 2 * (width - 1))
-    bar = "─" * pos + "●" + "─" * (width - 1 - pos)
-    return f"反对 ◄{bar}► 支持"
-
-
-def _score_label(score: float) -> str:
-    if score > 0.6:  return "强烈倾向支持"
-    if score > 0.2:  return "偏向支持"
-    if score > -0.2: return "基本中立"
-    if score > -0.6: return "偏向反对"
-    return "强烈倾向反对"

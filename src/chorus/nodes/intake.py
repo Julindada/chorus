@@ -5,7 +5,7 @@ from chorus.utils import AGENT_NAMES, SCHWARTZ_DIMS
 from chorus.infrastructure.dao import load_value_vector, save_value_vector
 
 
-def intake_node(state: DecisionState) -> dict:
+async def intake_node(state: DecisionState) -> dict:
     # ── 加载用户画像 ──────────────────────────────────────────────
     username = state["username"]
     value_vector = load_value_vector(username)
