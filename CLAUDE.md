@@ -19,6 +19,11 @@ LangGraph 规范见 `@~/.claude/langgraph.md`。设计说明见 `doc/Chorus_TD.m
 
 `initial_stances` 由 `entropy_monitor_node` 在 `debate_round == 0` 时写入一次，之后只读，不要在其他节点修改。
 
+## 文档同步
+
+修改代码逻辑后，核查 `doc/Chorus_TD.md` 和 `doc/Chorus_PRD.md` 是否需要同步更新。
+纯重构、变量重命名、格式调整无需核查。
+
 ## 运行
 
 ```bash

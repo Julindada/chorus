@@ -31,13 +31,16 @@ class DecisionState(TypedDict):
     # Bias metadata
     bias_flags: list[dict]
 
+    # Reality grounding
+    reality_discrepancies: list[dict]    # narrative vs reality gaps
+
     # Phase 1: parallel eval — operator.or_ merges Send branches into one dict
     agent_stances: Annotated[dict[str, AgentStance], operator.or_]
     initial_stances: dict[str, AgentStance]  # Phase 1 snapshot, set once, read-only in debate
 
-    # Fan-in health check
+    # Parallel dispatch health check
     critical_agents: list[str]          # missing any → crash graph
-    failed_agents: list[str]            # detected missing after fan-in
+    failed_agents: list[str]            # missing agents detected after results merge
 
     # Entropy & debate control
     entropy_score: float

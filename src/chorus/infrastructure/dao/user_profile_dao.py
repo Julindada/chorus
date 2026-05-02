@@ -21,13 +21,9 @@ def load_value_vector(username: str) -> dict[str, float] | None:
         row = conn.execute(
             "SELECT value_vector FROM user_profile WHERE username = ?", (username,)
         ).fetchone()
-        if row:
-            return json.loads(row[0])
-    except Exception:
-        pass
+        return json.loads(row[0]) if row else None
     finally:
         conn.close()
-    return None
 
 
 def save_value_vector(username: str, value_vector: dict[str, float]) -> None:

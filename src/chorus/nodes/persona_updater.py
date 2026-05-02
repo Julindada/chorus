@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from importlib.resources import files
 from pathlib import Path
@@ -7,9 +8,25 @@ from jinja2 import Environment, BaseLoader
 from chorus.state import DecisionState
 from chorus.infrastructure.dao.decision_history_dao import insert_decision_records
 from chorus.infrastructure.config import DATA_DIR
-from chorus.utils import AGENT_VALUE_MAPPING
+from chorus.utils import AGENT_VALUE_MAPPING, SCHWARTZ_DIM_LABELS
 
 _REPORTS_DIR = Path(DATA_DIR) / "reports"
+
+_BIAS_NAME_TRANSLATIONS = {
+    "Sunk Cost Fallacy":      "沉没成本谬误",
+    "Recency Effect":         "近因效应",
+    "Bandwagon Effect":       "从众效应",
+    "Black-and-White Thinking": "非黑即白思维",
+    "Confirmation Bias":      "确认偏误",
+    "Loss Aversion":          "损失厌恶",
+    "Status Quo Bias":        "现状偏误",
+    "Anchoring Effect":       "锚定效应",
+    "Overconfidence Bias":    "过度自信偏误",
+    "Emotional Reasoning":    "情绪化推理",
+    "Planning Fallacy":       "计划谬误",
+    "Catastrophizing":        "灾难化思维",
+    "Should Statements":      "应该陈述",
+}
 
 _AGENT_LABELS = {
     "Arbiter":    "逻辑法官",
@@ -51,10 +68,10 @@ async def persona_updater_node(state: DecisionState) -> dict:
         }
         for agent_name, stance in state["agent_stances"].items()
     ]
-    insert_decision_records(records)
+    await asyncio.to_thread(insert_decision_records, records)
 
-    report = _render_report(_prepare_data(state))
-    _save_report(state.get("username", "unknown"), timestamp, report)
+    report = await asyncio.to_thread(_render_report, _prepare_data(state))
+    await asyncio.to_thread(_save_report, state.get("username", "unknown"), timestamp, report)
     return {"final_report": report}
 
 
@@ -100,8 +117,8 @@ def _prepare_data(state: DecisionState) -> dict:
 
     bias_flags = [
         {
-            "bias":         b["bias"],
-            "target_agents": "、".join(b.get("target_agents", [])),
+            "bias":         _BIAS_NAME_TRANSLATIONS.get(b["bias"], b["bias"]),
+            "target_agents": "、".join(_AGENT_LABELS.get(a, a) for a in b.get("target_agents", [])),
             "note":         b["note"],
         }
         for b in state.get("bias_flags", [])
@@ -129,7 +146,7 @@ def _prepare_data(state: DecisionState) -> dict:
         value_influences.append({
             "label":      _AGENT_LABELS.get(agent, agent),
             "weight":     f"{weights.get(agent, 0):.0%}",
-            "dims":       ", ".join(dims),
+            "dims":       "、".join(SCHWARTZ_DIM_LABELS.get(d, d) for d in dims),
             "importance": f"{avg:.0%}",
         })
 
@@ -140,6 +157,7 @@ def _prepare_data(state: DecisionState) -> dict:
         "options":              options,
         "user_narrative":       state.get("user_narrative", ""),
         "generated_at":         datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "reality_discrepancies": state.get("reality_discrepancies", []),
         "bias_flags":           bias_flags,
         "agents":               agents,
         "summary_scores":       summary_scores,

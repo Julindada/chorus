@@ -1,3 +1,5 @@
+import asyncio
+
 from langgraph.types import interrupt
 
 from chorus.state import DecisionState
@@ -8,7 +10,7 @@ from chorus.infrastructure.dao import load_value_vector, save_value_vector
 async def intake_node(state: DecisionState) -> dict:
     # ── 加载用户画像 ──────────────────────────────────────────────
     username = state["username"]
-    value_vector = load_value_vector(username)
+    value_vector = await asyncio.to_thread(load_value_vector, username)
     if value_vector is None:
         user_input = interrupt({
             "action": "fill_value_vector",
@@ -19,7 +21,7 @@ async def intake_node(state: DecisionState) -> dict:
             dim: max(0.0, min(1.0, float(user_input.get(dim, 0.5))))
             for dim in SCHWARTZ_DIMS
         }
-        save_value_vector(username, value_vector)
+        await asyncio.to_thread(save_value_vector, username, value_vector)
 
     # ── 初始化控制字段 ────────────────────────────────────────────
     return {
@@ -32,5 +34,6 @@ async def intake_node(state: DecisionState) -> dict:
         "stance_history":     [],
         "debate_history":     [],
         "antagonism_flags":   [],
-        "agent_stances":      {},
+        "agent_stances":           {},
+        "reality_discrepancies":   [],
     }

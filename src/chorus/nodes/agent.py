@@ -11,6 +11,7 @@ _INSTRUCTION = """
 - decision_options：待决策的选项列表
 - value_vector：用户的 Schwartz 10 维价值观权重（0.0–1.0）
 - bias_flags：已检测到的认知偏误（仅供参考，不要对偏误本身发表评判）
+- reality_discrepancies：联网核查发现，含用户陈述与现实的落差及重要背景补充（可能为空）
 
 输出要求：
 - option_scores：对每个候选选项的评分，key 为选项名称，value 为 -1.0（强烈不建议）到 +1.0（强烈推荐），必须包含所有选项
@@ -38,9 +39,10 @@ def _build_messages(agent_name: str, state: DecisionState) -> list[dict]:
     return [
         {"role": "system", "content": AGENT_PROMPTS[agent_name] + _INSTRUCTION},
         {"role": "user", "content": json.dumps({
-            "user_narrative":   state["user_narrative"],
-            "decision_options": state["decision_options"],
-            "value_vector":     state["value_vector"],
-            "bias_flags":       state["bias_flags"],
+            "user_narrative":        state["user_narrative"],
+            "decision_options":      state["decision_options"],
+            "value_vector":          state["value_vector"],
+            "bias_flags":            state["bias_flags"],
+            "reality_discrepancies": state.get("reality_discrepancies", []),
         }, ensure_ascii=False)},
     ]

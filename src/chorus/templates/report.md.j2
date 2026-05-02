@@ -10,6 +10,18 @@
 
 ---
 
+{% if reality_discrepancies %}
+## 现实情况分析
+
+| 实体 | 叙述中的说法 | 核实结果 | 严重程度 |
+|------|------------|---------|---------|
+{% for d in reality_discrepancies -%}
+| {{ d.entity }} | {{ d.narrative_claim }} | {{ d.reality_fact }} | {{ {"low": "低", "medium": "中", "high": "高"}[d.severity] }} |
+{% endfor -%}
+
+---
+
+{% endif %}
 {% if bias_flags %}
 ## 认知偏误检测
 

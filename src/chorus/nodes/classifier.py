@@ -1,3 +1,5 @@
+import asyncio
+
 from pydantic import BaseModel, Field
 from chorus.state import DecisionState
 from chorus.utils import get_model, DecisionType, DECISION_TYPES
@@ -39,6 +41,6 @@ async def decision_classifier_node(state: DecisionState) -> dict:
     decision_type = result.decision_type
 
     # ── 按类型查预置权重（种子模板首次运行时自动写入 DB）────────────
-    template = find_scene_template(decision_type)
+    template = await asyncio.to_thread(find_scene_template, decision_type)
 
     return {"decision_type": decision_type, "scene_template": template}

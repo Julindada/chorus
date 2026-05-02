@@ -142,6 +142,19 @@ SCHWARTZ_DIMS: list[str] = [
     "universalism",     # 普世
 ]
 
+SCHWARTZ_DIM_LABELS: dict[str, str] = {
+    "self_direction": "自主导向",
+    "stimulation":    "刺激",
+    "hedonism":       "享乐",
+    "achievement":    "成就",
+    "power":          "权力",
+    "security":       "安全",
+    "conformity":     "顺从",
+    "tradition":      "传统",
+    "benevolence":    "善意",
+    "universalism":   "普世",
+}
+
 # Schwartz circumplex axes used for entropy threshold adjustment
 SCHWARTZ_CONSERVATION_DIMS: list[str] = ["conformity", "tradition", "security"]
 SCHWARTZ_OPENNESS_DIMS:     list[str] = ["self_direction", "stimulation"]
