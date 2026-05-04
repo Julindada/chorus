@@ -1,6 +1,9 @@
 import { Client } from "@langchain/langgraph-sdk";
 
-const url = process.env.NEXT_PUBLIC_LANGGRAPH_URL ?? "http://localhost:8123";
+const url =
+  typeof window !== "undefined"
+    ? `${window.location.origin}/api/langgraph`
+    : "http://localhost:8123";
 
 export const lgClient = new Client({ apiUrl: url });
 
