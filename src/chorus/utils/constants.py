@@ -155,6 +155,31 @@ SCHWARTZ_DIM_LABELS: dict[str, str] = {
     "universalism":   "普世",
 }
 
+# ESS Round 11 questionnaire: question index (1-based) → dimension(s) it contributes to.
+SCHWARTZ_QUESTIONNAIRE_MAPPING: dict[int, list[str]] = {
+    1:  ["self_direction"],
+    2:  ["power"],
+    3:  ["universalism"],
+    4:  ["achievement"],
+    5:  ["security"],
+    6:  ["stimulation"],
+    7:  ["conformity"],
+    8:  ["universalism"],
+    9:  ["tradition"],
+    10: ["hedonism"],
+    11: ["self_direction"],
+    12: ["benevolence"],
+    13: ["achievement"],
+    14: ["security"],
+    15: ["stimulation"],
+    16: ["conformity"],
+    17: ["power"],
+    18: ["benevolence"],
+    19: ["universalism"],
+    20: ["tradition"],
+    21: ["hedonism"],
+}
+
 # Schwartz circumplex axes used for entropy threshold adjustment
 SCHWARTZ_CONSERVATION_DIMS: list[str] = ["conformity", "tradition", "security"]
 SCHWARTZ_OPENNESS_DIMS:     list[str] = ["self_direction", "stimulation"]

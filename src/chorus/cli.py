@@ -12,7 +12,7 @@ from rich.rule import Rule
 from chorus.graph import graph
 from chorus.infrastructure.config import LLM_API_KEY, DB_PATH, TAVILY_API_KEY
 from chorus.infrastructure.dao import load_value_vector, save_value_vector
-from chorus.utils.constants import SCHWARTZ_DIM_LABELS, SCHWARTZ_DIMS
+from chorus.utils.constants import SCHWARTZ_DIM_LABELS, SCHWARTZ_DIMS, SCHWARTZ_QUESTIONNAIRE_MAPPING
 
 app = typer.Typer(name="chorus", add_completion=False)
 console = Console()
@@ -44,6 +44,67 @@ def _check_config() -> None:
         raise typer.Exit(1)
 
 
+def _scores_from_questionnaire() -> dict[str, float]:
+    """Compute Schwartz vector from 21 ESS questionnaire answers (1–6)."""
+    console.print(
+        "[dim]逐行输入每道题的答案（1–6），也可一次性粘贴空格分隔的 21 个数字：[/dim]"
+    )
+
+    answers: list[int] = []
+    # Try single-line paste first
+    first = questionary.text("  答案（可粘贴全部21个，空格分隔）：").ask()
+    if first is None:
+        raise typer.Exit(1)
+    parts = first.strip().split()
+    if len(parts) == 21:
+        try:
+            answers = [int(p) for p in parts]
+        except ValueError:
+            pass
+
+    if not answers:
+        # Fall back to one-by-one entry
+        if parts:
+            try:
+                answers.append(int(parts[0]))
+            except ValueError:
+                pass
+        while len(answers) < 21:
+            n = len(answers) + 1
+            raw = questionary.text(f"  题 {n:>2} 答案 [1–6]：").ask()
+            if raw is None:
+                raise typer.Exit(1)
+            try:
+                val = int(raw.strip())
+                if 1 <= val <= 6:
+                    answers.append(val)
+                    continue
+            except ValueError:
+                pass
+            console.print("[yellow]  请输入 1 到 6 之间的整数[/yellow]")
+
+    invalid = [i + 1 for i, a in enumerate(answers) if not (1 <= a <= 6)]
+    if invalid:
+        console.print(f"[yellow]  题 {invalid} 的答案超出范围，将以 3（中间值）代替[/yellow]")
+        answers = [a if 1 <= a <= 6 else 3 for a in answers]
+
+    # Aggregate: score = (6 - answer) / 5, then average per dimension
+    dim_scores: dict[str, list[float]] = {d: [] for d in SCHWARTZ_DIMS}
+    for q_idx, dims in SCHWARTZ_QUESTIONNAIRE_MAPPING.items():
+        score = (6 - answers[q_idx - 1]) / 5
+        for dim in dims:
+            dim_scores[dim].append(score)
+
+    result = {d: round(sum(v) / len(v), 2) for d, v in dim_scores.items()}
+
+    console.print("\n[bold]计算结果：[/bold]")
+    for d in SCHWARTZ_DIMS:
+        label = SCHWARTZ_DIM_LABELS[d]
+        console.print(f"  {label:<6} {d:<16}  {result[d]:.2f}")
+    console.print()
+    return result
+
+
 def _collect_schwartz_scores() -> dict[str, float]:
     import json
 
@@ -55,10 +116,13 @@ def _collect_schwartz_scores() -> dict[str, float]:
 
     mode = questionary.select(
         "输入方式：",
-        choices=["粘贴 JSON", "逐项输入"],
+        choices=["问卷答案（推荐）", "粘贴 JSON", "逐项输入"],
     ).ask()
     if mode is None:
         raise typer.Exit(1)
+
+    if mode == "问卷答案（推荐）":
+        return _scores_from_questionnaire()
 
     if mode == "粘贴 JSON":
         console.print("[dim]粘贴后以空行（回车两次）确认[/dim]")
