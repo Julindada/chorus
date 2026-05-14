@@ -1,0 +1,14 @@
+services:
+  chorus:
+    build: .
+    env_file:
+      - .env
+    environment:
+      - CHORUS_DB_PATH=/home/appuser/data/chorus.db
+    volumes:
+      - chorus_data:/home/appuser/data
+    tty: true
+    stdin_open: true
+
+volumes:
+  chorus_data:

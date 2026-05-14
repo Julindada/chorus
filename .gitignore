@@ -17,3 +17,11 @@ wheels/
 
 # SQLite
 data
+
+.DS_Store
+
+# Claude Code local settings
+.claude/
+
+# Test cache
+.pytest_cache/
